@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "MediGuardian",
+    "slug": "mediguardian",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "updates": {
+      "enabled": false,
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mediguardian.app"
+    },
+    "android": {
+      "package": "com.mediguardian.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MediGuardian to access your camera to capture pill images."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "5e507070-2989-4934-8267-eb40a0f976c9"
+      }
+    }
+  }
+}
