@@ -12,8 +12,8 @@ import {
 import { Camera } from 'expo-camera';
 import * as Speech from 'expo-speech';
 
-// Backend URL - Using ngrok public URL (works from anywhere!)
-const BACKEND_URL = 'https://subobscure-underage-stephan.ngrok-free.dev';
+// Backend URL - Deployed on Render.com (works from anywhere!)
+const BACKEND_URL = 'https://mediguardian-backend-latest.onrender.com';
 
 function App() {
   const [hasPermission, setHasPermission] = useState(null);

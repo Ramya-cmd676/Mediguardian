@@ -2,8 +2,7 @@ services:
   - type: web
     name: mediguardian-backend
     env: docker
-    dockerfilePath: ./Dockerfile
-    dockerContext: ./
+    dockerImagePath: docker.io/nks21/mediguardian-backend:latest
     plan: free
     healthCheckPath: /health
     envVars:
