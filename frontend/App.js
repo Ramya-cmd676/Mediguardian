@@ -11,9 +11,16 @@ import {
 } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as Speech from 'expo-speech';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 // Backend URL - Deployed on Render.com (works from anywhere!)
 const BACKEND_URL = 'https://mediguardian-backend-latest.onrender.com';
+
+// Notification handler behavior: when a notification is tapped, open the camera verification flow
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({ shouldShowAlert: true, shouldPlaySound: true, shouldSetBadge: false })
+});
 
 function App() {
   const [hasPermission, setHasPermission] = useState(null);
@@ -30,6 +37,29 @@ function App() {
     })();
   }, []);
 
+  useEffect(() => {
+    // Register for push notifications on mount
+    registerForPushNotificationsAsync().then(token => {
+      // save to state or send to backend after user logs in
+      if (token) setPushToken(token);
+    });
+
+    // Listener for when a notification is received while app is foregrounded
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data || {};
+      // If notification contains type 'reminder', open camera view
+      if (data.type === 'reminder') {
+        // No-op here; when app is tapped, the notification response listener will fire
+        // We can optionally navigate to camera verification screen — this app uses simple state, so we'll just ensure photo is null so user can capture
+        setPhoto(null);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  const [pushToken, setPushToken] = useState(null);
+
   async function takePicture() {
     if (cameraRef.current) {
       const photo = await cameraRef.current.takePictureAsync({
@@ -42,6 +72,18 @@ function App() {
   }
 
   async function sendToBackend(endpoint) {
+    // If we have a pushToken and logged-in user info, register it (patient flow)
+    try {
+      if (pushToken && user && user.id) {
+        // send push token to backend
+        fetch(`${BACKEND_URL}/api/push/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': user.token ? `Bearer ${user.token}` : '' },
+          body: JSON.stringify({ userId: user.id, expoPushToken: pushToken, deviceInfo: { platform: Constants.platform } })
+        }).catch(err => console.warn('push register failed', err));
+      }
+    } catch (e) { console.warn('push register flow error', e) }
+
     if (!photo) return;
     
     setLoading(true);
@@ -131,12 +173,91 @@ function App() {
     setPillName('');
   }
 
+  // Minimal auth UI for patient: register/login so we can attach user.id and token for push registration
+  const [authMode, setAuthMode] = useState(null); // 'login'|'register'
+  const [user, setUser] = useState(null);
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+
+  async function authRegister() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/auth/register`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: authEmail, password: authPassword, role: 'patient' }) });
+      const json = await res.json();
+      if (res.ok) {
+        Alert.alert('Registered', 'Please login');
+        setAuthMode('login');
+      } else {
+        Alert.alert('Error', json.error || 'Register failed');
+      }
+    } catch (err) { Alert.alert('Error', err.message) }
+  }
+
+  async function authLogin() {
+    try {
+      const res = await fetch(`${BACKEND_URL}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: authEmail, password: authPassword }) });
+      const json = await res.json();
+      if (res.ok && json.token) {
+        setUser({ id: json.user.id || json.user.id, email: json.user.email, token: json.token });
+        // register push token now that we have user
+        if (pushToken) {
+          await fetch(`${BACKEND_URL}/api/push/register`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${json.token}` }, body: JSON.stringify({ userId: json.user.id, expoPushToken: pushToken, deviceInfo: { platform: Constants.platform } }) });
+        }
+      } else {
+        Alert.alert('Login failed', json.error || 'Invalid credentials');
+      }
+    } catch (err) { Alert.alert('Error', err.message) }
+  }
+
+  async function registerForPushNotificationsAsync() {
+    try {
+      if (!Constants.isDevice) {
+        // Push notifications require a physical device
+        console.warn('Must use physical device for push notifications');
+        return null;
+      }
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+      if (finalStatus !== 'granted') {
+        Alert.alert('Failed to get push token for push notification!');
+        return null;
+      }
+      const tokenResp = await Notifications.getExpoPushTokenAsync();
+      return tokenResp.data;
+    } catch (err) {
+      console.warn('registerForPushNotificationsAsync error', err);
+      return null;
+    }
+  }
+
+
   if (hasPermission === null) {
     return <View style={styles.container}><Text style={styles.infoText}>Requesting camera permission...</Text></View>;
   }
   
   if (hasPermission === false) {
     return <View style={styles.container}><Text style={styles.errorText}>No access to camera</Text></View>;
+  }
+  // If authMode is set, show simple auth UI
+  if (authMode) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>{authMode === 'login' ? 'Patient Login' : 'Patient Register'}</Text>
+        <TextInput style={[styles.textInput, { marginTop: 20 }]} placeholder="Email" value={authEmail} onChangeText={setAuthEmail} />
+        <TextInput style={[styles.textInput, { marginTop: 8 }]} placeholder="Password" secureTextEntry value={authPassword} onChangeText={setAuthPassword} />
+        <View style={{ marginTop: 12 }}>
+          <TouchableOpacity style={[styles.actionButton, styles.registerButton]} onPress={authMode==='login'?authLogin:authRegister}>
+            <Text style={styles.buttonText}>{authMode==='login' ? 'Login' : 'Register'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.actionButton, styles.retakeButton, { marginTop: 8 }]} onPress={() => setAuthMode(null)}>
+            <Text style={styles.buttonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    )
   }
 
   if (photo) {
@@ -227,6 +348,14 @@ function App() {
           </TouchableOpacity>
         </View>
       </Camera>
+      <View style={{ padding: 12 }}>
+        <TouchableOpacity style={[styles.actionButton, styles.registerButton]} onPress={() => setAuthMode('login')}>
+          <Text style={styles.buttonText}>Patient Login</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.actionButton, styles.verifyButton, { marginTop: 8 }]} onPress={() => setAuthMode('register')}>
+          <Text style={styles.buttonText}>Patient Register</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

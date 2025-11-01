@@ -16,6 +16,14 @@ const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// auth routes (register/login) and middleware
+const { router: authRouter, verifyToken, requireRole } = require('./auth');
+app.use('/auth', authRouter);
+// mount schedules routes (protect create/update/delete for caregivers if needed)
+const schedulesRouter = require('./schedules');
+// protect schedule modification endpoints for caregivers
+app.use('/api', schedulesRouter);
+
 const upload = multer({ storage: multer.memoryStorage() });
 
 // health
@@ -23,8 +31,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// register a pill image and store embedding
-app.post('/register-pill', upload.single('image'), async (req, res) => {
+// register a pill image and store embedding (caregiver only)
+app.post('/register-pill', verifyToken, requireRole('caregiver'), upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'image file required (field name: image)' });
     const name = req.body.name || 'unknown';
@@ -73,6 +81,32 @@ app.post('/verify-pill', upload.single('image'), async (req, res) => {
     }
   } catch (err) {
     console.error(err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+// list pills (for admin UI)
+app.get('/pills', verifyToken, (req, res) => {
+  try {
+    const db = loadDatabase(DB_PATH);
+    const out = db.map(e => ({ id: e.id, name: e.name, imagePath: e.imagePath }));
+    return res.json(out);
+  } catch (err) {
+    console.error('pills list error', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+// lightweight users listing for admin (exposes users without passwords)
+app.get('/users', verifyToken, (req, res) => {
+  try {
+    const usersPath = path.join(__dirname, 'db', 'users.json');
+    if (!fs.existsSync(usersPath)) return res.json([]);
+    const raw = fs.readFileSync(usersPath, 'utf8');
+    const users = JSON.parse(raw || '[]').map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role }));
+    return res.json(users);
+  } catch (err) {
+    console.error('users list error', err);
     return res.status(500).json({ error: 'server error' });
   }
 });
