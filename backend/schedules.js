@@ -60,13 +60,36 @@ router.get('/schedules', verifyToken, (req, res) => {
   return res.json(db);
 });
 
-router.post('/schedules', verifyToken, requireRole('caregiver'), (req, res) => {
+router.post('/schedules', verifyToken, (req, res) => {
   try {
-    const { patientId, pillId, times, label } = req.body;
-    if (!patientId || !pillId || !times || !Array.isArray(times)) return res.status(400).json({ error: 'patientId, pillId and times[] required' });
+    // Allow patients to create their own schedules or caregivers to create for patients
+    // Accept either: { patientId, pillId, times } OR simplified { medicationName, time, daysOfWeek }
+    const creatorId = req.user && req.user.id;
+    const { patientId: bodyPatientId, pillId, times, label, medicationName, time, daysOfWeek } = req.body;
+
+    const patientId = bodyPatientId || creatorId;
+
+    // Normalize times: allow single time string or array
+    let timesArr = [];
+    if (Array.isArray(times) && times.length > 0) timesArr = times;
+    else if (typeof time === 'string' && time.trim()) timesArr = [time.trim()];
+
+    if (!patientId || timesArr.length === 0) return res.status(400).json({ error: 'patientId and time(s) required' });
+
     const db = loadDb(SCHEDULES_DB);
     const id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,9);
-    const entry = { id, patientId, pillId, times, label: label || '', active: true, lastSentAt: null };
+    const entry = {
+      id,
+      patientId,
+      pillId: pillId || null,
+      medicationName: medicationName || label || '',
+      times: timesArr,
+      daysOfWeek: Array.isArray(daysOfWeek) ? daysOfWeek : null,
+      active: true,
+      lastSentAt: null,
+      createdBy: creatorId,
+      createdAt: new Date().toISOString()
+    };
     db.push(entry);
     saveDb(SCHEDULES_DB, db);
     return res.json({ success: true, id });
@@ -76,14 +99,27 @@ router.post('/schedules', verifyToken, requireRole('caregiver'), (req, res) => {
   }
 });
 
-router.put('/schedules/:id', verifyToken, requireRole('caregiver'), (req, res) => {
+router.put('/schedules/:id', verifyToken, (req, res) => {
   try {
     const id = req.params.id;
     const db = loadDb(SCHEDULES_DB);
     const idx = db.findIndex(s => s.id === id);
     if (idx === -1) return res.status(404).json({ error: 'not found' });
-    const updated = Object.assign(db[idx], req.body);
-    db[idx] = updated;
+
+    // Only caregivers or the owner (patient) who the schedule belongs to can update
+    const schedule = db[idx];
+    const requester = req.user || {};
+    if (requester.role !== 'caregiver' && requester.id !== schedule.patientId) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
+    // Merge allowed fields
+    const allowed = ['pillId', 'medicationName', 'times', 'daysOfWeek', 'active', 'label'];
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) schedule[key] = req.body[key];
+    }
+
+    db[idx] = schedule;
     saveDb(SCHEDULES_DB, db);
     return res.json({ success: true });
   } catch (err) {
@@ -92,12 +128,19 @@ router.put('/schedules/:id', verifyToken, requireRole('caregiver'), (req, res) =
   }
 });
 
-router.delete('/schedules/:id', verifyToken, requireRole('caregiver'), (req, res) => {
+router.delete('/schedules/:id', verifyToken, (req, res) => {
   try {
     const id = req.params.id;
     const db = loadDb(SCHEDULES_DB);
     const idx = db.findIndex(s => s.id === id);
     if (idx === -1) return res.status(404).json({ error: 'not found' });
+
+    const schedule = db[idx];
+    const requester = req.user || {};
+    if (requester.role !== 'caregiver' && requester.id !== schedule.patientId) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+
     db.splice(idx, 1);
     saveDb(SCHEDULES_DB, db);
     return res.json({ success: true });

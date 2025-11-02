@@ -39,8 +39,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "5e507070-2989-4934-8267-eb40a0f976c9"
+        "projectId": "cceced22-8d32-42ef-aa58-ff7922528838"
       }
-    }
+    },
+    "owner": "karthikeya-16"
   }
 }

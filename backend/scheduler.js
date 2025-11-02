@@ -18,7 +18,7 @@ function initScheduler() {
       
       // Find schedules matching current time
       const matchingSchedules = schedules.filter(schedule => {
-        if (!schedule.enabled) return false;
+        if (!schedule.active) return false;
         
         // Check if schedule time matches current time
         if (schedule.time === currentTime) {
@@ -64,7 +64,7 @@ async function sendTestReminder(userId, medicationName) {
     userId: userId,
     medicationName: medicationName || 'Test Medication',
     time: new Date().toTimeString().substring(0, 5),
-    enabled: true
+    active: true
   };
 
   console.log('[SCHEDULER] Sending test reminder:', testSchedule);

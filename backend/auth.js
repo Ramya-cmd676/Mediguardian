@@ -77,6 +77,33 @@ router.post('/login', (req, res) => {
   }
 });
 
+// Get users list (for caregivers to see patients)
+router.get('/users', verifyToken, (req, res) => {
+  try {
+    const users = loadUsers();
+    const { role } = req.query;
+    
+    let filteredUsers = users;
+    if (role) {
+      filteredUsers = users.filter(u => u.role === role);
+    }
+    
+    // Return users without password hash
+    const safeUsers = filteredUsers.map(u => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      createdAt: u.createdAt
+    }));
+    
+    return res.json(safeUsers);
+  } catch (err) {
+    console.error('Get users error', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
 // Middleware to verify JWT
 function verifyToken(req, res, next) {
   const auth = req.headers.authorization;
