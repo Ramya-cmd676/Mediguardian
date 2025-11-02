@@ -19,10 +19,18 @@ app.use(bodyParser.json());
 // auth routes (register/login) and middleware
 const { router: authRouter, verifyToken, requireRole } = require('./auth');
 app.use('/auth', authRouter);
+
 // mount schedules routes (protect create/update/delete for caregivers if needed)
 const schedulesRouter = require('./schedules');
-// protect schedule modification endpoints for caregivers
 app.use('/api', schedulesRouter);
+
+// mount notification routes
+const { router: notificationsRouter } = require('./notifications');
+app.use('/api', notificationsRouter);
+
+// initialize scheduler for automatic medication reminders
+const { initScheduler } = require('./scheduler');
+initScheduler();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
@@ -31,11 +39,15 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// register a pill image and store embedding (caregiver only)
-app.post('/register-pill', verifyToken, requireRole('caregiver'), upload.single('image'), async (req, res) => {
+// register a pill image and store embedding (accessible by patients and caregivers)
+app.post('/register-pill', verifyToken, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'image file required (field name: image)' });
-    const name = req.body.name || 'unknown';
+    
+    // Accept both 'name' and 'pill_name' for backwards compatibility
+    const name = req.body.pill_name || req.body.name || 'unknown';
+    const userId = req.body.user_id || req.userId; // user_id from request body or token
+    
     await ensureModelLoaded();
 
     const embedding = await imageBufferToEmbedding(req.file.buffer);
@@ -46,7 +58,14 @@ app.post('/register-pill', verifyToken, requireRole('caregiver'), upload.single(
     fs.writeFileSync(filepath, req.file.buffer);
 
     const db = loadDatabase(DB_PATH);
-    db.push({ id, name, imagePath: `uploads/${filename}`, embedding });
+    db.push({ 
+      id, 
+      name, 
+      imagePath: `uploads/${filename}`, 
+      embedding,
+      userId: userId, // Track who registered the pill
+      createdAt: new Date().toISOString()
+    });
     saveDatabase(DB_PATH, db);
 
     return res.json({ success: true, id, name });
@@ -93,6 +112,26 @@ app.get('/pills', verifyToken, (req, res) => {
     return res.json(out);
   } catch (err) {
     console.error('pills list error', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+// Test endpoint to send a notification manually (for debugging)
+app.post('/test-notification', verifyToken, async (req, res) => {
+  try {
+    const { sendTestReminder } = require('./scheduler');
+    const userId = req.body.userId || req.userId;
+    const medicationName = req.body.medicationName || 'Test Medication';
+    
+    const result = await sendTestReminder(userId, medicationName);
+    
+    return res.json({ 
+      success: result.success, 
+      message: 'Test notification sent',
+      result: result 
+    });
+  } catch (err) {
+    console.error('test notification error', err);
     return res.status(500).json({ error: 'server error' });
   }
 });
