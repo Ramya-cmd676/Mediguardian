@@ -37,10 +37,27 @@ export default function LoginScreen({ navigation, route, setUser }) {
       const data = await response.json();
 
       if (response.ok && data.token) {
-        if (data.user && data.user.role !== selectedRole) {
+        // Check if role selection was made and matches
+        if (selectedRole && data.user && data.user.role !== selectedRole) {
           Alert.alert(
             'Wrong Account Type',
-            `This account is registered as a ${data.user.role}. Please select the correct option.`
+            `This account is registered as a ${data.user.role}. Redirecting you to the correct login...`,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Auto-select correct role and login again
+                  setSelectedRole(data.user.role);
+                  // Set user data
+                  setUser({
+                    id: data.user.id,
+                    email: data.user.email,
+                    role: data.user.role,
+                    token: data.token,
+                  });
+                },
+              },
+            ]
           );
           setLoading(false);
           return;

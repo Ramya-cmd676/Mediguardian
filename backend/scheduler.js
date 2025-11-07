@@ -1,5 +1,6 @@
 const cron = require('node-cron');
-const { sendMedicationReminder, loadSchedules } = require('./notifications');
+const { sendMedicationReminder } = require('./notifications');
+const { Schedule } = require('./database');
 
 /**
  * Initialize medication reminder scheduler
@@ -11,20 +12,24 @@ function initScheduler() {
   // Run every minute
   cron.schedule('* * * * *', async () => {
     const now = new Date();
-    const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    
+    // Get current time in IST (UTC+5:30) since users are in India
+    const istOffset = 5.5 * 60; // IST is UTC+5:30
+    const istTime = new Date(now.getTime() + istOffset * 60 * 1000);
+    const currentTime = `${String(istTime.getUTCHours()).padStart(2, '0')}:${String(istTime.getUTCMinutes()).padStart(2, '0')}`;
+    
+    console.log(`[SCHEDULER] Checking schedules at IST: ${currentTime} (UTC: ${String(now.getUTCHours()).padStart(2, '0')}:${String(now.getUTCMinutes()).padStart(2, '0')})`);
     
     try {
-      const schedules = loadSchedules();
+      const schedules = await Schedule.find({ active: true });
       
       // Find schedules matching current time
       const matchingSchedules = schedules.filter(schedule => {
-        if (!schedule.active) return false;
-        
-        // Check if schedule time matches current time
+        // Check if schedule time matches current IST time
         if (schedule.time === currentTime) {
-          // Check days of week if specified
+          // Check days of week if specified (using IST day)
           if (schedule.daysOfWeek && schedule.daysOfWeek.length > 0) {
-            const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const currentDay = istTime.getUTCDay(); // Day in IST
             return schedule.daysOfWeek.includes(currentDay);
           }
           return true;
@@ -38,12 +43,17 @@ function initScheduler() {
         // Send reminders for all matching schedules
         for (const schedule of matchingSchedules) {
           console.log(`[SCHEDULER] Sending reminder: ${schedule.medicationName} to user ${schedule.userId}`);
-          const result = await sendMedicationReminder(schedule);
+          const result = await sendMedicationReminder({
+            userId: schedule.userId,
+            medicationName: schedule.medicationName,
+            time: schedule.time,
+            scheduleId: schedule.scheduleId
+          });
           
           if (result.success) {
-            console.log(`[SCHEDULER] Successfully sent reminder for schedule ${schedule.id}`);
+            console.log(`[SCHEDULER] Successfully sent reminder for schedule ${schedule.scheduleId}`);
           } else {
-            console.error(`[SCHEDULER] Failed to send reminder for schedule ${schedule.id}:`, result.reason || result.error);
+            console.error(`[SCHEDULER] Failed to send reminder for schedule ${schedule.scheduleId}:`, result.reason || result.error);
           }
         }
       }

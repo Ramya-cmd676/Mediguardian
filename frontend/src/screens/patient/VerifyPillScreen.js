@@ -30,6 +30,44 @@ export default function VerifyPillScreen({ route, navigation, user }) {
     })();
   }, []);
 
+  const notifyCaregiver = async (eventType, medication) => {
+    try {
+      const message = eventType === 'verification_failed'
+        ? `⚠️ Patient ${user.name || user.email} failed to verify ${medication} after 3 attempts`
+        : `✅ Patient ${user.name || user.email} successfully took ${medication}`;
+
+      // WORKAROUND: Send to all caregivers (until patient-caregiver linking is implemented)
+      // In production, this should send ONLY to the patient's assigned caregiver
+      const response = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${user.token}`,
+        },
+        body: JSON.stringify({
+          role: 'caregiver', // Send to all caregivers
+          title: eventType === 'verification_failed' ? 'Medication Alert ⚠️' : 'Medication Taken ✅',
+          body: message,
+          data: {
+            type: eventType,
+            patientId: user.id,
+            patientName: user.name || user.email,
+            medicationName: medication,
+            scheduleId: scheduleId,
+          },
+        }),
+      });
+
+      if (response.ok) {
+        console.log(`[NOTIFY] Caregivers notified: ${eventType}`);
+      } else {
+        console.warn(`[NOTIFY] Failed to notify caregivers:`, await response.text());
+      }
+    } catch (error) {
+      console.warn('Failed to notify caregiver:', error);
+    }
+  };
+
   const takePicture = async () => {
     if (cameraRef) {
       const photoData = await cameraRef.takePictureAsync({
@@ -53,6 +91,11 @@ export default function VerifyPillScreen({ route, navigation, user }) {
         name: 'verification.jpg',
       });
 
+      // CRITICAL: Include scheduleId to verify against the SCHEDULED pill only
+      if (scheduleId) {
+        formData.append('scheduleId', scheduleId);
+      }
+
       const response = await fetch(`${BACKEND_URL}/verify-pill`, {
         method: 'POST',
         headers: {
@@ -65,6 +108,8 @@ export default function VerifyPillScreen({ route, navigation, user }) {
 
       if (response.ok && data.match && data.name) {
         // Success - correct pill
+        await notifyCaregiver('verification_success', data.name);
+        
         Alert.alert(
           '✓ Correct Medication!',
           `Verified: ${data.name}\n\nPlease take your medication now.`,
@@ -81,6 +126,8 @@ export default function VerifyPillScreen({ route, navigation, user }) {
         
         if (retryCount >= 2) {
           // After 3 attempts, send fallback to caregiver
+          await notifyCaregiver('verification_failed', medicationName || 'Unknown medication');
+          
           Alert.alert(
             '✗ Verification Failed',
             'Unable to verify after multiple attempts. Your caregiver has been notified.',
@@ -91,11 +138,14 @@ export default function VerifyPillScreen({ route, navigation, user }) {
               },
             ]
           );
-          // TODO: Send fallback notification to caregiver
         } else {
+          const errorMessage = data.error === 'scheduled_pill_not_found'
+            ? data.message
+            : `This is not the correct medication (${medicationName || 'unknown'}). Please try again with the scheduled pill.`;
+          
           Alert.alert(
             '✗ Wrong Medication',
-            'This is not the correct medication. Please try again with the scheduled pill.',
+            errorMessage,
             [
               {
                 text: 'Retry',

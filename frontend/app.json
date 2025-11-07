@@ -23,11 +23,16 @@
       "package": "com.mediguardian.app",
       "permissions": [
         "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.WAKE_LOCK"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF"
-      }
+      },
+      "useNextNotificationsApi": true
     },
     "plugins": [
       [
@@ -35,13 +40,30 @@
         {
           "cameraPermission": "Allow MediGuardian to access your camera to capture pill images."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#4CAF50",
+          "defaultChannel": "medication-reminders"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "compileSdkVersion": 33,
+            "targetSdkVersion": 33,
+            "buildToolsVersion": "33.0.0"
+          }
+        }
       ]
     ],
     "extra": {
       "eas": {
-        "projectId": "cceced22-8d32-42ef-aa58-ff7922528838"
+        "projectId": "e3f7de51-4bbc-4f0e-8446-4eabf39ac9c5"
       }
     },
-    "owner": "karthikeya-16"
+    "owner": "ramyacsekm4"
   }
 }

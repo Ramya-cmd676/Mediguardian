@@ -8,9 +8,9 @@ import PatientNavigator from './PatientNavigator';
 
 const Stack = createStackNavigator();
 
-export default function AppNavigator({ user, setUser }) {
+export default function AppNavigator({ user, setUser, navigationRef }) {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
           <>

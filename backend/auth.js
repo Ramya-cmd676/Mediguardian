@@ -1,52 +1,34 @@
 const express = require('express');
-const fs = require('fs');
-const path = require('path');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { User } = require('./database');
 
 const router = express.Router();
 
-const USERS_DB = path.join(__dirname, 'db', 'users.json');
-
-function ensureUsersDb() {
-  if (!fs.existsSync(USERS_DB)) {
-    fs.mkdirSync(path.dirname(USERS_DB), { recursive: true });
-    fs.writeFileSync(USERS_DB, JSON.stringify([]));
-  }
-}
-
-function loadUsers() {
-  try {
-    ensureUsersDb();
-    const raw = fs.readFileSync(USERS_DB, 'utf8');
-    return JSON.parse(raw || '[]');
-  } catch (err) {
-    console.error('Failed to load users DB', err);
-    return [];
-  }
-}
-
-function saveUsers(users) {
-  fs.writeFileSync(USERS_DB, JSON.stringify(users, null, 2));
-}
-
 // Register: name, email, password, role (patient|caregiver)
-router.post('/register', (req, res) => {
+router.post('/register', async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
 
-    const users = loadUsers();
-    if (users.find(u => u.email === email)) return res.status(409).json({ error: 'user exists' });
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(409).json({ error: 'user exists' });
 
-    const id = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
+    const userId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 9);
     const passwordHash = bcrypt.hashSync(password, 8);
-    const user = { id, name: name || '', email, role: role || 'patient', passwordHash, createdAt: new Date().toISOString() };
+    
+    const user = new User({
+      userId,
+      name: name || '',
+      email,
+      role: role || 'patient',
+      passwordHash
+    });
 
-    users.push(user);
-    saveUsers(users);
+    await user.save();
+    console.log('[AUTH] User registered:', email);
 
-    return res.json({ success: true, id, email, role: user.role });
+    return res.json({ success: true, id: userId, email, role: user.role });
   } catch (err) {
     console.error('Register error', err);
     return res.status(500).json({ error: 'server error' });
@@ -54,21 +36,22 @@ router.post('/register', (req, res) => {
 });
 
 // Login: email, password -> token
-router.post('/login', (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
 
-    const users = loadUsers();
-    const user = users.find(u => u.email === email);
+    const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ error: 'invalid credentials' });
 
     const ok = bcrypt.compareSync(password, user.passwordHash);
     if (!ok) return res.status(401).json({ error: 'invalid credentials' });
 
-    const payload = { id: user.id, email: user.email, role: user.role, name: user.name };
+    const payload = { id: user.userId, email: user.email, role: user.role, name: user.name };
     const secret = process.env.JWT_SECRET || 'dev-secret';
     const token = jwt.sign(payload, secret, { expiresIn: '12h' });
+
+    console.log('[AUTH] User logged in:', email);
 
     return res.json({ token, user: payload });
   } catch (err) {
@@ -78,19 +61,17 @@ router.post('/login', (req, res) => {
 });
 
 // Get users list (for caregivers to see patients)
-router.get('/users', verifyToken, (req, res) => {
+router.get('/users', verifyToken, async (req, res) => {
   try {
-    const users = loadUsers();
     const { role } = req.query;
     
-    let filteredUsers = users;
-    if (role) {
-      filteredUsers = users.filter(u => u.role === role);
-    }
+    let query = {};
+    if (role) query.role = role;
     
-    // Return users without password hash
-    const safeUsers = filteredUsers.map(u => ({
-      id: u.id,
+    const users = await User.find(query).select('userId name email role createdAt');
+    
+    const safeUsers = users.map(u => ({
+      id: u.userId,
       name: u.name,
       email: u.email,
       role: u.role,
@@ -113,6 +94,7 @@ function verifyToken(req, res, next) {
   try {
     const payload = jwt.verify(token, secret);
     req.user = payload;
+    req.userId = payload.id; // Add userId to request for easy access
     next();
   } catch (err) {
     return res.status(401).json({ error: 'invalid token' });

@@ -47,13 +47,48 @@ export default function SignupScreen({ navigation, setUser }) {
 
       const data = await response.json();
 
-      if (response.ok && data.token) {
-        setUser({
-          id: data.user.id,
-          email: data.user.email,
-          role: data.user.role,
-          token: data.token,
-        });
+      if (response.ok && data.success) {
+        // Registration successful - now login automatically
+        Alert.alert(
+          'Success',
+          'Account created successfully! Logging you in...',
+          [
+            {
+              text: 'OK',
+              onPress: async () => {
+                // Auto-login after signup
+                try {
+                  const loginResponse = await fetch(`${BACKEND_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password }),
+                  });
+
+                  const loginData = await loginResponse.json();
+
+                  if (loginResponse.ok && loginData.token) {
+                    setUser({
+                      id: loginData.user.id,
+                      email: loginData.user.email,
+                      role: loginData.user.role,
+                      token: loginData.token,
+                    });
+                  } else {
+                    // If auto-login fails, redirect to login screen
+                    Alert.alert('Success', 'Account created! Please login.', [
+                      { text: 'OK', onPress: () => navigation.navigate('Login') }
+                    ]);
+                  }
+                } catch (err) {
+                  // If auto-login fails, redirect to login screen
+                  Alert.alert('Success', 'Account created! Please login.', [
+                    { text: 'OK', onPress: () => navigation.navigate('Login') }
+                  ]);
+                }
+              }
+            }
+          ]
+        );
       } else {
         Alert.alert('Registration Failed', data.error || `Server error (${response.status})`);
       }

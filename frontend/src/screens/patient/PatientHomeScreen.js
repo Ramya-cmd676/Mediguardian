@@ -70,11 +70,10 @@ export default function PatientHomeScreen({ user, setUser, navigation }) {
     ).padStart(2, '0')}`;
 
     for (const schedule of todaySchedules) {
-      const times = schedule.times || [];
-      for (const time of times) {
-        if (time > currentTime) {
-          return { medication: schedule.medicationName, time };
-        }
+      // Handle both 'time' (string) and 'times' (array) for backward compatibility
+      const timeValue = schedule.time; // Backend uses singular 'time'
+      if (timeValue && timeValue > currentTime) {
+        return { medication: schedule.medicationName, time: timeValue };
       }
     }
     return null;
@@ -153,7 +152,7 @@ export default function PatientHomeScreen({ user, setUser, navigation }) {
               <View style={styles.scheduleInfo}>
                 <Text style={styles.scheduleMedication}>{schedule.medicationName}</Text>
                 <Text style={styles.scheduleTimes}>
-                  {(schedule.times || []).join(' • ')}
+                  {schedule.time || 'No time set'}
                 </Text>
               </View>
             </View>

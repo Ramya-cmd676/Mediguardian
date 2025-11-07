@@ -1,42 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const { Expo } = require('expo-server-sdk');
-const fs = require('fs');
-const path = require('path');
+const { PushToken, Schedule, User } = require('./database');
 
 const expo = new Expo();
-
-// Database paths
-const PUSH_TOKENS_DB = path.join(__dirname, 'db', 'push_tokens.json');
-const SCHEDULES_DB = path.join(__dirname, 'db', 'schedules.json');
-
-// Ensure db directory exists
-if (!fs.existsSync(path.dirname(PUSH_TOKENS_DB))) {
-  fs.mkdirSync(path.dirname(PUSH_TOKENS_DB), { recursive: true });
-}
-
-// Helper: Load push tokens database
-function loadPushTokens() {
-  if (!fs.existsSync(PUSH_TOKENS_DB)) {
-    return [];
-  }
-  const raw = fs.readFileSync(PUSH_TOKENS_DB, 'utf8');
-  return JSON.parse(raw || '[]');
-}
-
-// Helper: Save push tokens database
-function savePushTokens(tokens) {
-  fs.writeFileSync(PUSH_TOKENS_DB, JSON.stringify(tokens, null, 2), 'utf8');
-}
-
-// Helper: Load schedules database
-function loadSchedules() {
-  if (!fs.existsSync(SCHEDULES_DB)) {
-    return [];
-  }
-  const raw = fs.readFileSync(SCHEDULES_DB, 'utf8');
-  return JSON.parse(raw || '[]');
-}
 
 /**
  * POST /api/push/register
@@ -49,11 +16,16 @@ function loadSchedules() {
  *   "deviceInfo": { "platform": "android" }
  * }
  */
-router.post('/push/register', (req, res) => {
+router.post('/push/register', async (req, res) => {
   try {
+    console.log('[PUSH-REGISTER] ===== NEW REQUEST =====');
+    console.log('[PUSH-REGISTER] Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('[PUSH-REGISTER] Body:', JSON.stringify(req.body, null, 2));
+    
     const { userId, expoPushToken, deviceInfo } = req.body;
 
     if (!userId || !expoPushToken) {
+      console.error('[PUSH-REGISTER] ❌ Missing fields - userId:', !!userId, 'expoPushToken:', !!expoPushToken);
       return res.status(400).json({ 
         error: 'userId and expoPushToken are required' 
       });
@@ -61,36 +33,37 @@ router.post('/push/register', (req, res) => {
 
     // Validate the token format
     if (!Expo.isExpoPushToken(expoPushToken)) {
+      console.error('[PUSH-REGISTER] ❌ Invalid token format:', expoPushToken);
       return res.status(400).json({ 
         error: 'Invalid Expo push token format' 
       });
     }
 
-    const tokens = loadPushTokens();
+    console.log('[PUSH-REGISTER] Valid token received for user:', userId);
 
     // Check if token already exists for this user
-    const existingIndex = tokens.findIndex(
-      t => t.userId === userId && t.expoPushToken === expoPushToken
-    );
+    const existing = await PushToken.findOne({ userId, expoPushToken });
 
-    if (existingIndex !== -1) {
+    if (existing) {
+      console.log('[PUSH-REGISTER] Token already exists, updating...');
       // Update existing token
-      tokens[existingIndex].deviceInfo = deviceInfo;
-      tokens[existingIndex].updatedAt = new Date().toISOString();
+      existing.deviceInfo = deviceInfo;
+      existing.updatedAt = new Date();
+      await existing.save();
+      console.log('[PUSH-REGISTER] ✅ Token updated successfully');
     } else {
+      console.log('[PUSH-REGISTER] Creating new push token entry...');
       // Add new token
-      tokens.push({
+      const pushToken = new PushToken({
         userId,
         expoPushToken,
-        deviceInfo,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        deviceInfo
       });
+      await pushToken.save();
+      console.log('[PUSH-REGISTER] ✅ Token saved successfully');
     }
 
-    savePushTokens(tokens);
-
-    console.log(`[PUSH] Registered token for user ${userId}:`, expoPushToken.substring(0, 30) + '...');
+    console.log(`[PUSH-REGISTER] SUCCESS for user ${userId}: ${expoPushToken.substring(0, 30)}...`);
 
     return res.json({ 
       success: true, 
@@ -98,8 +71,43 @@ router.post('/push/register', (req, res) => {
     });
 
   } catch (err) {
-    console.error('[PUSH] Registration error:', err);
+    console.error('[PUSH-REGISTER] ❌❌❌ EXCEPTION:', err);
+    console.error('[PUSH-REGISTER] Stack:', err.stack);
     return res.status(500).json({ error: 'Failed to register push token' });
+  }
+});
+
+// TEST ROUTE (no auth) - register push token (useful for debugging from curl/Postman)
+router.post('/push/register-test', async (req, res) => {
+  try {
+    const { userId, expoPushToken, deviceInfo } = req.body;
+    console.log('[PUSH-TEST] Request received:', { userId, tokenPreview: expoPushToken?.substring(0, 30), deviceInfo });
+
+    if (!userId || !expoPushToken) {
+      console.error('[PUSH-TEST] Missing required fields');
+      return res.status(400).json({ error: 'userId and expoPushToken required' });
+    }
+
+    if (!Expo.isExpoPushToken(expoPushToken)) {
+      return res.status(400).json({ error: 'Invalid Expo push token format' });
+    }
+
+    const existing = await PushToken.findOne({ userId, expoPushToken });
+    if (existing) {
+      existing.deviceInfo = deviceInfo || existing.deviceInfo;
+      existing.updatedAt = new Date();
+      await existing.save();
+      console.log('[PUSH-TEST] Token already existed - updated');
+      return res.json({ success: true, message: 'Token updated' });
+    }
+
+    const pushToken = new PushToken({ userId, expoPushToken, deviceInfo: deviceInfo || null });
+    await pushToken.save();
+    console.log('[PUSH-TEST] ✅ Token saved successfully for user:', userId);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[PUSH-TEST] ❌ Error:', err);
+    return res.status(500).json({ error: 'server error' });
   }
 });
 
@@ -125,8 +133,7 @@ router.post('/push/send', async (req, res) => {
       });
     }
 
-    const tokens = loadPushTokens();
-    const userTokens = tokens.filter(t => t.userId === userId);
+    const userTokens = await PushToken.find({ userId });
 
     if (userTokens.length === 0) {
       return res.status(404).json({ 
@@ -207,7 +214,7 @@ router.post('/push/send-to-all', async (req, res) => {
       });
     }
 
-    const tokens = loadPushTokens();
+    const tokens = await PushToken.find({});
 
     if (tokens.length === 0) {
       return res.status(404).json({ 
@@ -255,12 +262,103 @@ router.post('/push/send-to-all', async (req, res) => {
 });
 
 /**
+ * POST /api/push/send-to-role
+ * Send a notification to all users with a specific role
+ * 
+ * Body:
+ * {
+ *   "role": "caregiver",
+ *   "title": "Notification title",
+ *   "body": "Notification message",
+ *   "data": { "type": "alert", "patientId": "123" }
+ * }
+ */
+router.post('/push/send-to-role', async (req, res) => {
+  try {
+    const { role, title, body, data } = req.body;
+
+    if (!role || !title || !body) {
+      return res.status(400).json({ 
+        error: 'role, title, and body are required' 
+      });
+    }
+
+    // Get userIds with the specified role
+    const users = await User.find({ role });
+    const roleUserIds = users.map(u => u.userId);
+
+    if (roleUserIds.length === 0) {
+      return res.status(404).json({ 
+        error: `No users found with role: ${role}` 
+      });
+    }
+
+    console.log(`[PUSH] Sending to ${roleUserIds.length} user(s) with role "${role}"`);
+
+    // Load push tokens and filter by role userIds
+    const roleTokens = await PushToken.find({ userId: { $in: roleUserIds } });
+
+    if (roleTokens.length === 0) {
+      return res.status(404).json({ 
+        error: `No push tokens found for users with role: ${role}` 
+      });
+    }
+
+    // Create messages
+    const messages = roleTokens
+      .filter(t => Expo.isExpoPushToken(t.expoPushToken))
+      .map(t => ({
+        to: t.expoPushToken,
+        sound: 'default',
+        title: title,
+        body: body,
+        data: data || {},
+        priority: 'high',
+        channelId: 'medication-alerts'
+      }));
+
+    if (messages.length === 0) {
+      return res.status(400).json({ 
+        error: 'No valid push tokens available' 
+      });
+    }
+
+    // Send notifications in chunks
+    const chunks = expo.chunkPushNotifications(messages);
+    const tickets = [];
+
+    for (const chunk of chunks) {
+      try {
+        const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+        tickets.push(...ticketChunk);
+      } catch (error) {
+        console.error('[PUSH] Error sending chunk:', error);
+      }
+    }
+
+    console.log(`[PUSH] Sent ${messages.length} notification(s) to role "${role}"`);
+
+    return res.json({ 
+      success: true, 
+      role: role,
+      userCount: roleUserIds.length,
+      deviceCount: messages.length,
+      ticketCount: tickets.length
+    });
+
+  } catch (err) {
+    console.error('[PUSH] Send-to-role error:', err);
+    return res.status(500).json({ error: 'Failed to send role-based notification' });
+  }
+});
+
+/**
  * GET /api/push/tokens
  * Get all registered push tokens (for debugging)
  */
-router.get('/push/tokens', (req, res) => {
+router.get('/push/tokens', async (req, res) => {
   try {
-    const tokens = loadPushTokens();
+    const tokens = await PushToken.find({});
     
     // Don't expose full tokens in production
     const sanitized = tokens.map(t => ({
@@ -288,7 +386,7 @@ router.get('/push/tokens', (req, res) => {
  *   "expoPushToken": "ExponentPushToken[xxxxx]"
  * }
  */
-router.delete('/push/unregister', (req, res) => {
+router.delete('/push/unregister', async (req, res) => {
   try {
     const { userId, expoPushToken } = req.body;
 
@@ -298,12 +396,7 @@ router.delete('/push/unregister', (req, res) => {
       });
     }
 
-    const tokens = loadPushTokens();
-    const filteredTokens = tokens.filter(
-      t => !(t.userId === userId && t.expoPushToken === expoPushToken)
-    );
-
-    savePushTokens(filteredTokens);
+    await PushToken.deleteOne({ userId, expoPushToken });
 
     console.log(`[PUSH] Unregistered token for user ${userId}`);
 
@@ -324,10 +417,9 @@ router.delete('/push/unregister', (req, res) => {
  */
 async function sendMedicationReminder(schedule) {
   try {
-    const { userId, medicationName, time, id } = schedule;
+    const { userId, medicationName, time, scheduleId } = schedule;
 
-    const tokens = loadPushTokens();
-    const userTokens = tokens.filter(t => t.userId === userId);
+    const userTokens = await PushToken.find({ userId });
 
     if (userTokens.length === 0) {
       console.log(`[REMINDER] No tokens found for user ${userId}`);
@@ -343,12 +435,14 @@ async function sendMedicationReminder(schedule) {
         body: `Time to take ${medicationName}`,
         data: { 
           type: 'reminder',
-          scheduleId: id,
+          scheduleId: scheduleId,
           medicationName: medicationName,
           scheduledTime: time
         },
-        priority: 'high',
-        badge: 1
+        priority: 'max',
+        badge: 1,
+        vibrate: [0, 250, 250, 250],
+        channelId: 'medication-reminders'
       }));
 
     if (messages.length === 0) {
@@ -379,6 +473,5 @@ async function sendMedicationReminder(schedule) {
 
 module.exports = { 
   router, 
-  sendMedicationReminder,
-  loadSchedules
+  sendMedicationReminder
 };

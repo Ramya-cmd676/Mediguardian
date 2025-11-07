@@ -20,6 +20,7 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 export default function ManageRemindersScreen({ user }) {
   const [schedules, setSchedules] = useState([]);
   const [patients, setPatients] = useState([]);
+  const [pills, setPills] = useState([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -28,6 +29,7 @@ export default function ManageRemindersScreen({ user }) {
 
   const [newSchedule, setNewSchedule] = useState({
     patientId: '',
+    pillId: '',
     medicationName: '',
     time: '',
     daysOfWeek: [],
@@ -50,6 +52,13 @@ export default function ManageRemindersScreen({ user }) {
       if (patientList.length > 0 && !newSchedule.patientId) {
         setNewSchedule((prev) => ({ ...prev, patientId: patientList[0].id }));
       }
+
+      // Load registered pills
+      const pillsRes = await fetch(`${BACKEND_URL}/pills`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+      const pillsData = await pillsRes.json();
+      setPills(pillsData);
 
       // Load schedules
       const schedulesRes = await fetch(`${BACKEND_URL}/api/schedules`, {
@@ -95,8 +104,8 @@ export default function ManageRemindersScreen({ user }) {
   };
 
   const createSchedule = async () => {
-    if (!newSchedule.medicationName.trim()) {
-      Alert.alert('Missing Information', 'Please enter medication name');
+    if (!newSchedule.medicationName.trim() && !newSchedule.pillId) {
+      Alert.alert('Missing Information', 'Please enter medication name or select a registered pill');
       return;
     }
 
@@ -115,6 +124,7 @@ export default function ManageRemindersScreen({ user }) {
         },
         body: JSON.stringify({
           patientId: newSchedule.patientId,
+          pillId: newSchedule.pillId || null,
           medicationName: newSchedule.medicationName,
           time: newSchedule.time,
           daysOfWeek: newSchedule.daysOfWeek.length > 0 ? newSchedule.daysOfWeek : null,
@@ -125,6 +135,7 @@ export default function ManageRemindersScreen({ user }) {
         Alert.alert('Success', 'Medication reminder created successfully!');
         setNewSchedule({
           patientId: patients[0]?.id || '',
+          pillId: '',
           medicationName: '',
           time: '',
           daysOfWeek: [],
@@ -236,6 +247,33 @@ export default function ManageRemindersScreen({ user }) {
                   key={patient.id}
                   label={patient.email}
                   value={patient.id}
+                />
+              ))}
+            </Picker>
+          </View>
+
+          <Text style={styles.label}>Link to Registered Pill (Optional)</Text>
+          <View style={styles.pickerContainer}>
+            <Picker
+              selectedValue={newSchedule.pillId}
+              onValueChange={(value) => {
+                setNewSchedule((prev) => {
+                  const selectedPill = pills.find(p => p.id === value);
+                  return {
+                    ...prev,
+                    pillId: value,
+                    medicationName: selectedPill ? selectedPill.name : prev.medicationName
+                  };
+                });
+              }}
+              style={styles.picker}
+            >
+              <Picker.Item label="-- No Pill Linked --" value="" />
+              {pills.map((pill) => (
+                <Picker.Item
+                  key={pill.id}
+                  label={pill.name}
+                  value={pill.id}
                 />
               ))}
             </Picker>
