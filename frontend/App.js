@@ -100,59 +100,134 @@ export default function App() {
     manageUserSession();
   }, [user]);
 
-  // --------------------------------------
-  // 🔔 Notification listeners
-  // --------------------------------------
-  useEffect(() => {
-    console.log('[NOTIF] Setting up notification listeners...');
+// --------------------------------------
+// 🔔 Notification listeners + deep linking (robust, with retry + debug alert)
+// --------------------------------------
+const pendingNotificationRef = useRef(null); // store data until navigation ready
+const NAV_RETRY_MAX = 10;
+const NAV_RETRY_DELAY = 300; // ms
 
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('[NOTIF] Notification received (foreground):', notification);
+useEffect(() => {
+  console.log('[NOTIF] Setting up notification listeners...');
 
-      // Foreground fallback: re-present as a system notification so we can visually confirm
-      // This helps confirm whether device actually receives the push while app in foreground
-      try {
-        const content = {
-          title: notification.request.content.title || 'Notification',
-          body: notification.request.content.body || '',
-          data: notification.request.content.data || {},
-          // If Android, attach same channel
-          ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
-        };
-        // present async but don't block
-        Notifications.presentNotificationAsync(content);
-      } catch (e) {
-        console.warn('[NOTIF] presentNotificationAsync failed:', e);
-      }
-    });
+  // Foreground notifications (when app is open)
+  notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+    console.log('[NOTIF] Received (foreground):', notification);
+  });
 
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+  // Handle when user taps on the notification (background -> foreground)
+  responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+    try {
       const data = response.notification.request.content.data;
-      console.log('[NOTIF] Notification tapped:', data);
+      console.log('[NOTIF] Notification tapped (response listener):', data);
+      // keep a copy in case navigation isn't ready
+      pendingNotificationRef.current = data;
+      handleNotificationNavigationWithRetry(data);
+    } catch (e) {
+      console.error('[NOTIF] Error inside response listener:', e);
+    }
+  });
 
-      if (data?.type === 'reminder' && data?.scheduleId && navigationRef.current) {
-        console.log('[NOTIF] Navigating to VerifyPill...');
-        setTimeout(() => {
-          navigationRef.current?.navigate('PatientApp', {
-            screen: 'VerifyPill',
-            params: {
-              scheduleId: data.scheduleId,
-              medicationName: data.medicationName,
-              manual: false,
-            },
-          });
-        }, 200);
+  // Also handle if the app was opened via notification (cold start)
+  (async () => {
+    try {
+      const lastResponse = await Notifications.getLastNotificationResponseAsync();
+      if (lastResponse?.notification) {
+        const data = lastResponse.notification.request.content.data;
+        console.log('[NOTIF] App opened from killed state with:', data);
+        pendingNotificationRef.current = data;
+        // small delay to give react tree a chance to mount
+        setTimeout(() => handleNotificationNavigationWithRetry(data), 350);
       }
-    });
+    } catch (e) {
+      console.error('[NOTIF] getLastNotificationResponseAsync error:', e);
+    }
+  })();
 
-    return () => {
-      console.log('[NOTIF] Cleaning up notification listeners...');
-      if (notificationListener.current)
-        Notifications.removeNotificationSubscription(notificationListener.current);
-      if (responseListener.current)
-        Notifications.removeNotificationSubscription(responseListener.current);
-    };
-  }, []);
+  return () => {
+    console.log('[NOTIF] Cleaning up notification listeners...');
+    if (notificationListener.current)
+      Notifications.removeNotificationSubscription(notificationListener.current);
+    if (responseListener.current)
+      Notifications.removeNotificationSubscription(responseListener.current);
+  };
+}, []);
+
+// ---------------------------------------------------
+// 🧭 Helper: try navigation with retry until nav is ready
+// ---------------------------------------------------
+const handleNotificationNavigationWithRetry = (data, attempt = 0) => {
+  if (!data) return;
+
+  // Only navigate for reminder-type messages
+  if (data.type !== 'reminder' || !data.scheduleId) {
+    console.log('[NAV] Not a reminder or missing scheduleId:', data);
+    return;
+  }
+
+  const doNavigate = () => {
+    try {
+      // check navigationRef exists and (if possible) isReady
+      const nav = navigationRef.current;
+      const isReady = typeof nav?.isReady === 'function' ? nav.isReady() : !!nav;
+      if (nav && isReady) {
+        console.log(`[NAV] Navigating (attempt ${attempt + 1}) to VerifyPill with`, data);
+        // If your VerifyPill is nested under PatientApp:
+        nav.navigate('PatientApp', {
+          screen: 'VerifyPill',
+          params: {
+            scheduleId: data.scheduleId,
+            medicationName: data.medicationName,
+            manual: false,
+          },
+        });
+
+        // clear pending
+        pendingNotificationRef.current = null;
+        return true;
+      } else {
+        console.log(`[NAV] Navigation not ready (attempt ${attempt + 1})`, { navExists: !!nav, isReady });
+        return false;
+      }
+    } catch (e) {
+      console.error('[NAV] navigate() threw:', e);
+      return false;
+    }
+  };
+
+  // Try now
+  const success = doNavigate();
+  if (!success) {
+    // If not succeeded, retry with backoff up to NAV_RETRY_MAX times
+    if (attempt < NAV_RETRY_MAX - 1) {
+      setTimeout(() => handleNotificationNavigationWithRetry(data, attempt + 1), NAV_RETRY_DELAY);
+    } else {
+      console.warn('[NAV] Failed to navigate after retries. Storing pending data.');
+      // optionally you can surface an Alert to help debug on device
+      try {
+        Alert.alert('Notification', `Could not open VerifyPill automatically. Tap notifications list or open app.`, [{ text: 'OK' }]);
+      } catch (e) { /* ignore if Alert fails in some env */ }
+    }
+  } else {
+    // Success: optional debug toast/alert (remove in production)
+    try {
+      console.log('[NAV] Navigation success');
+    } catch (e) {}
+  }
+};
+
+// Optional: if user explicitly opens the notifications screen in-app, flush pending navigation
+useEffect(() => {
+  if (!pendingNotificationRef.current) return;
+  // try once more when user returns to foreground
+  const sub = Notifications.addNotificationResponseReceivedListener(() => {
+    if (pendingNotificationRef.current) {
+      handleNotificationNavigationWithRetry(pendingNotificationRef.current);
+    }
+  });
+  return () => Notifications.removeNotificationSubscription(sub);
+}, []);
+
 
   // --------------------------------------
   // 🚀 Initialize push registration
