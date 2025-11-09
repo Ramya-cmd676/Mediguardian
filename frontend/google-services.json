@@ -1,22 +1,13 @@
 {
-  "_comment": "INSTRUCTIONS TO ENABLE PUSH NOTIFICATIONS:",
-  "_comment_1": "1. Go to Firebase Console: https://console.firebase.google.com/",
-  "_comment_2": "2. Create new project named 'MediGuardian'",
-  "_comment_3": "3. Add Android app with package name: com.mediguardian.app",
-  "_comment_4": "4. Download the google-services.json file",
-  "_comment_5": "5. Replace THIS file with the downloaded google-services.json",
-  "_comment_6": "6. Rebuild APK with: eas build --platform android --profile preview",
-  "_comment_7": "",
-  "_comment_8": "TEMPORARY PLACEHOLDER - Replace with real Firebase config!",
   "project_info": {
-    "project_number": "000000000000",
-    "project_id": "mediguardian-placeholder",
-    "storage_bucket": "mediguardian-placeholder.appspot.com"
+    "project_number": "87314510794",
+    "project_id": "pillsafe-63fc7",
+    "storage_bucket": "pillsafe-63fc7.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:87314510794:android:70c5a692c52692c6fa1533",
         "android_client_info": {
           "package_name": "com.mediguardian.app"
         }
@@ -24,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDummyKeyReplaceWithRealFirebaseKey0000"
+          "current_key": "AIzaSyACmNqWUMTfqti3ZM4t2ttUeD4Oz_LsKNU"
         }
       ],
       "services": {

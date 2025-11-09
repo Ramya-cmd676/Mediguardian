@@ -12,15 +12,16 @@
     "runtimeVersion": {
       "policy": "sdkVersion"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mediguardian.app"
     },
     "android": {
       "package": "com.mediguardian.app",
+
+      "googleServicesFile": "./google-services.json",
+
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",

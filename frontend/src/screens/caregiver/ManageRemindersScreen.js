@@ -14,19 +14,24 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
+// ✅ Backend API base URL
 const BACKEND_URL = 'https://mediguardian-backend-latest.onrender.com';
+
+// ✅ Days of the week for selection
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function ManageRemindersScreen({ user }) {
-  const [schedules, setSchedules] = useState([]);
-  const [patients, setPatients] = useState([]);
-  const [pills, setPills] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [selectedTime, setSelectedTime] = useState(new Date());
+  // ===== STATE MANAGEMENT =====
+  const [schedules, setSchedules] = useState([]); // All medication reminders
+  const [patients, setPatients] = useState([]);   // All patients under the system
+  const [pills, setPills] = useState([]);         // All registered pills
+  const [loading, setLoading] = useState(false);  // Loader for create reminder button
+  const [refreshing, setRefreshing] = useState(false); // Pull-to-refresh flag
+  const [showAddForm, setShowAddForm] = useState(false); // Toggle new reminder form
+  const [showTimePicker, setShowTimePicker] = useState(false); // Show/hide time picker
+  const [selectedTime, setSelectedTime] = useState(new Date()); // TimePicker selected value
 
+  // ✅ Form state for creating a new schedule
   const [newSchedule, setNewSchedule] = useState({
     patientId: '',
     pillId: '',
@@ -35,13 +40,15 @@ export default function ManageRemindersScreen({ user }) {
     daysOfWeek: [],
   });
 
+  // ===== INITIAL DATA LOAD =====
   useEffect(() => {
     loadData();
   }, []);
 
+  // ✅ Fetch patients, pills, and schedules from backend
   const loadData = async () => {
     try {
-      // Load patients
+      // --- Fetch all users and filter only patients ---
       const usersRes = await fetch(`${BACKEND_URL}/auth/users`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
@@ -49,48 +56,52 @@ export default function ManageRemindersScreen({ user }) {
       const patientList = allUsers.filter((u) => u.role === 'patient');
       setPatients(patientList);
 
+      // Preselect first patient if not chosen yet
       if (patientList.length > 0 && !newSchedule.patientId) {
         setNewSchedule((prev) => ({ ...prev, patientId: patientList[0].id }));
       }
 
-      // Load registered pills
+      // --- Fetch registered pills ---
       const pillsRes = await fetch(`${BACKEND_URL}/pills`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
       const pillsData = await pillsRes.json();
       setPills(pillsData);
 
-      // Load schedules
+      // --- Fetch all medication schedules ---
       const schedulesRes = await fetch(`${BACKEND_URL}/api/schedules`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
       const schedulesData = await schedulesRes.json();
       setSchedules(schedulesData);
+
     } catch (error) {
       console.error('Failed to load data:', error);
     }
   };
 
+  // ✅ Pull-to-refresh handler
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData();
     setRefreshing(false);
   };
 
+  // ✅ Toggle day selection (Sun–Sat)
   const toggleDay = (dayIndex) => {
     setNewSchedule((prev) => {
       const days = prev.daysOfWeek.includes(dayIndex)
-        ? prev.daysOfWeek.filter((d) => d !== dayIndex)
-        : [...prev.daysOfWeek, dayIndex];
+        ? prev.daysOfWeek.filter((d) => d !== dayIndex) // Remove if already selected
+        : [...prev.daysOfWeek, dayIndex];               // Add new day
       return { ...prev, daysOfWeek: days.sort() };
     });
   };
 
+  // ✅ Handle time picker value change
   const onTimeChange = (event, selected) => {
     if (Platform.OS === 'android') {
       setShowTimePicker(false);
     }
-    
     if (selected) {
       setSelectedTime(selected);
       const hours = String(selected.getHours()).padStart(2, '0');
@@ -99,16 +110,20 @@ export default function ManageRemindersScreen({ user }) {
     }
   };
 
+  // ✅ Open time picker (iOS or Android)
   const openTimePicker = () => {
     setShowTimePicker(true);
   };
 
+  // ✅ Create new reminder (POST to backend)
   const createSchedule = async () => {
+    // Validation — must have medication name or pill link
     if (!newSchedule.medicationName.trim() && !newSchedule.pillId) {
       Alert.alert('Missing Information', 'Please enter medication name or select a registered pill');
       return;
     }
 
+    // Validate time format
     if (!newSchedule.time.match(/^\d{2}:\d{2}$/)) {
       Alert.alert('Invalid Time', 'Please enter time in HH:MM format (e.g., 08:30)');
       return;
@@ -116,6 +131,7 @@ export default function ManageRemindersScreen({ user }) {
 
     setLoading(true);
     try {
+      // Send to backend
       const response = await fetch(`${BACKEND_URL}/api/schedules`, {
         method: 'POST',
         headers: {
@@ -133,6 +149,7 @@ export default function ManageRemindersScreen({ user }) {
 
       if (response.ok) {
         Alert.alert('Success', 'Medication reminder created successfully!');
+        // Reset form and reload list
         setNewSchedule({
           patientId: patients[0]?.id || '',
           pillId: '',
@@ -156,6 +173,7 @@ export default function ManageRemindersScreen({ user }) {
     }
   };
 
+  // ✅ Toggle active/disabled status of schedule
   const toggleSchedule = async (scheduleId, currentStatus) => {
     try {
       const response = await fetch(`${BACKEND_URL}/api/schedules/${scheduleId}`, {
@@ -177,6 +195,7 @@ export default function ManageRemindersScreen({ user }) {
     }
   };
 
+  // ✅ Delete a schedule permanently
   const deleteSchedule = async (scheduleId) => {
     Alert.alert(
       'Delete Schedule',
@@ -208,16 +227,19 @@ export default function ManageRemindersScreen({ user }) {
     );
   };
 
+  // ✅ Helper: get patient email from ID
   const getPatientEmail = (patientId) => {
     const patient = patients.find((p) => p.id === patientId);
     return patient ? patient.email : patientId;
   };
 
+  // ======== UI START ========
   return (
     <ScrollView
       style={styles.container}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* --- Add Reminder Toggle Button --- */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.addButton}
@@ -229,10 +251,12 @@ export default function ManageRemindersScreen({ user }) {
         </TouchableOpacity>
       </View>
 
+      {/* --- Reminder Creation Form --- */}
       {showAddForm && (
         <View style={styles.formContainer}>
           <Text style={styles.formTitle}>New Medication Reminder</Text>
 
+          {/* Patient selection */}
           <Text style={styles.label}>Patient</Text>
           <View style={styles.pickerContainer}>
             <Picker
@@ -252,6 +276,7 @@ export default function ManageRemindersScreen({ user }) {
             </Picker>
           </View>
 
+          {/* Optional Pill Link */}
           <Text style={styles.label}>Link to Registered Pill (Optional)</Text>
           <View style={styles.pickerContainer}>
             <Picker
@@ -270,15 +295,12 @@ export default function ManageRemindersScreen({ user }) {
             >
               <Picker.Item label="-- No Pill Linked --" value="" />
               {pills.map((pill) => (
-                <Picker.Item
-                  key={pill.id}
-                  label={pill.name}
-                  value={pill.id}
-                />
+                <Picker.Item key={pill.id} label={pill.name} value={pill.id} />
               ))}
             </Picker>
           </View>
 
+          {/* Medication Name */}
           <Text style={styles.label}>Medication Name</Text>
           <TextInput
             style={styles.input}
@@ -289,6 +311,7 @@ export default function ManageRemindersScreen({ user }) {
             }
           />
 
+          {/* Time Picker */}
           <Text style={styles.label}>Time</Text>
           <TouchableOpacity style={styles.timePickerButton} onPress={openTimePicker}>
             <Text style={styles.timePickerText}>
@@ -307,6 +330,7 @@ export default function ManageRemindersScreen({ user }) {
             />
           )}
 
+          {/* Days Selector */}
           <Text style={styles.label}>Days of Week (Optional)</Text>
           <View style={styles.daysContainer}>
             {DAYS.map((day, index) => (
@@ -331,6 +355,7 @@ export default function ManageRemindersScreen({ user }) {
           </View>
           <Text style={styles.hint}>Leave empty for all days</Text>
 
+          {/* Create Button */}
           <TouchableOpacity
             style={[styles.createButton, loading && styles.createButtonDisabled]}
             onPress={createSchedule}
@@ -345,6 +370,7 @@ export default function ManageRemindersScreen({ user }) {
         </View>
       )}
 
+      {/* --- Active Reminders List --- */}
       <View style={styles.schedulesContainer}>
         <Text style={styles.sectionTitle}>
           Active Reminders ({schedules.filter((s) => s.active).length})
@@ -392,6 +418,7 @@ export default function ManageRemindersScreen({ user }) {
         )}
       </View>
 
+      {/* --- Disabled Reminders List --- */}
       {schedules.filter((s) => !s.active).length > 0 && (
         <View style={styles.schedulesContainer}>
           <Text style={styles.sectionTitle}>
@@ -433,6 +460,7 @@ export default function ManageRemindersScreen({ user }) {
   );
 }
 
+// ===== STYLES =====
 const styles = StyleSheet.create({
   container: {
     flex: 1,
