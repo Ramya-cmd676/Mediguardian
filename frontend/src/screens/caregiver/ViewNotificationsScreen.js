@@ -26,9 +26,9 @@ export default function ViewNotificationsScreen({ user }) {
   const loadNotifications = async () => {
     try {
       // In production, replace this with:
-      // const res = await fetch(`${BACKEND_URL}/api/notifications`, { headers: { Authorization: `Bearer ${user.token}` } });
-      // const data = await res.json();
-      // setNotifications(data);
+      const res = await fetch(`${BACKEND_URL}/api/notifications`, { headers: { Authorization: `Bearer ${user.token}` } });
+      const data = await res.json();
+      setNotifications(data);
 
       // Placeholder demo data for now
       setNotifications([

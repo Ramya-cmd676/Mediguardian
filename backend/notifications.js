@@ -182,4 +182,63 @@ async function sendMedicationReminder(schedule) {
   }
 }
 
+/**
+ * POST /api/push/send-to-role
+ * Sends a push notification to ALL users with a given role
+ * Example: { role: 'caregiver', title, body, data }
+ */
+router.post('/push/send-to-role', async (req, res) => {
+  try {
+    const { role, title, body, data = {} } = req.body;
+    if (!role || !title || !body) {
+      return res.status(400).json({ error: 'role, title, and body are required' });
+    }
+
+    // Find all users with this role
+    const { User, PushToken } = require('./database');
+    const users = await User.find({ role });
+    const userIds = users.map(u => u.userId);
+
+    // Find all push tokens for those users
+    const tokens = await PushToken.find({ userId: { $in: userIds } });
+    if (tokens.length === 0) {
+      console.log(`[PUSH] No tokens found for role: ${role}`);
+      return res.json({ success: false, message: 'No tokens for this role' });
+    }
+
+    // Prepare messages
+    const messages = tokens
+      .filter(t => Expo.isExpoPushToken(t.expoPushToken))
+      .map(t => ({
+        to: t.expoPushToken,
+        sound: 'default',
+        title,
+        body,
+        data,
+        channelId: 'medication-reminders',
+        priority: 'high',
+      }));
+
+    const chunks = expo.chunkPushNotifications(messages);
+    const tickets = [];
+
+    for (const chunk of chunks) {
+      try {
+        const ticketChunk = await expo.sendPushNotificationsAsync(chunk);
+        tickets.push(...ticketChunk);
+        console.log('[PUSH-ROLE] ticketChunk:', ticketChunk);
+      } catch (err) {
+        console.error('[PUSH-ROLE] send chunk error:', err);
+      }
+    }
+
+    console.log(`[PUSH-ROLE] ✅ Sent ${messages.length} notifications to all ${role}s`);
+    return res.json({ success: true, sent: messages.length });
+  } catch (err) {
+    console.error('[PUSH-ROLE] Error:', err);
+    return res.status(500).json({ error: 'server error' });
+  }
+});
+
+
 module.exports = { router, sendMedicationReminder };

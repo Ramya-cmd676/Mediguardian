@@ -7,7 +7,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 
 const USER_STORAGE_KEY = '@mediguardian_user';
 const BACKEND_URL = 'https://mediguardian-backend-latest.onrender.com';
-const PROJECT_ID = 'e3f7de51-4bbc-4f0e-8446-4eabf39ac9c5';
+const PROJECT_ID = 'bab4ac7d-18ec-4fdb-8b6c-c81e5bb36a10';
 
 // Use a single place to create Android channel name constant
 const ANDROID_CHANNEL_ID = 'medication-reminders';

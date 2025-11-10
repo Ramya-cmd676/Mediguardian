@@ -82,37 +82,85 @@ export default function VerifyPillScreen({ route, navigation, user }) {
   };
 
   const verifyPill = async (photoData) => {
-    setVerifying(true);
-    try {
-      const formData = new FormData();
-      formData.append('image', {
-        uri: photoData.uri,
-        type: 'image/jpeg',
-        name: 'verification.jpg',
-      });
+  setVerifying(true);
+  try {
+    const formData = new FormData();
+    formData.append('image', {
+      uri: photoData.uri,
+      type: 'image/jpeg',
+      name: 'verification.jpg',
+    });
 
-      // CRITICAL: Include scheduleId to verify against the SCHEDULED pill only
-      if (scheduleId) {
-        formData.append('scheduleId', scheduleId);
-      }
+    // Include scheduleId to check correct scheduled pill
+    if (scheduleId) {
+      formData.append('scheduleId', scheduleId);
+    }
 
-      const response = await fetch(`${BACKEND_URL}/verify-pill`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${user.token}`,
-        },
-        body: formData,
-      });
+    const response = await fetch(`${BACKEND_URL}/verify-pill`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${user.token}`,
+      },
+      body: formData,
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (response.ok && data.match && data.name) {
-        // Success - correct pill
-        await notifyCaregiver('verification_success', data.name);
-        
+    if (response.ok && data.match && data.name) {
+      // ✅ Correct pill
+      await notifyCaregiver('verification_success', data.name);
+
+      Alert.alert(
+        '✓ Correct Medication!',
+        `Verified: ${data.name}\n\nPlease take your medication now.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => navigation.goBack(),
+          },
+        ]
+      );
+    } else {
+      // ❌ Wrong pill or no match
+      const newRetryCount = retryCount + 1;
+      setRetryCount(newRetryCount);
+
+      if (newRetryCount >= 3) {
+        // 🚨 After 3 wrong attempts, notify all caregivers
+        try {
+          console.log('[VERIFICATION] 3 failed attempts — notifying caregivers...');
+          const notifyRes = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${user.token}`,
+            },
+            body: JSON.stringify({
+              role: 'caregiver',
+              title: 'Medication Alert ⚠️',
+              body: `⚠️ Patient ${user.name || user.email} failed to verify ${medicationName || 'Unknown medication'} after 3 attempts`,
+              data: {
+                type: 'verification_failed',
+                patientId: user.id,
+                patientName: user.name || user.email,
+                medicationName: medicationName,
+                scheduleId,
+              },
+            }),
+          });
+
+          if (notifyRes.ok) {
+            console.log('[VERIFICATION] ✅ Caregivers notified after 3 failed attempts');
+          } else {
+            console.warn('[VERIFICATION] ❌ Failed to notify caregivers:', await notifyRes.text());
+          }
+        } catch (err) {
+          console.warn('[VERIFICATION] Error notifying caregivers:', err);
+        }
+
         Alert.alert(
-          '✓ Correct Medication!',
-          `Verified: ${data.name}\n\nPlease take your medication now.`,
+          '✗ Verification Failed',
+          'Unable to verify after multiple attempts. Your caregiver has been notified.',
           [
             {
               text: 'OK',
@@ -121,51 +169,33 @@ export default function VerifyPillScreen({ route, navigation, user }) {
           ]
         );
       } else {
-        // Wrong pill or not found
-        setRetryCount(retryCount + 1);
-        
-        if (retryCount >= 2) {
-          // After 3 attempts, send fallback to caregiver
-          await notifyCaregiver('verification_failed', medicationName || 'Unknown medication');
-          
-          Alert.alert(
-            '✗ Verification Failed',
-            'Unable to verify after multiple attempts. Your caregiver has been notified.',
-            [
-              {
-                text: 'OK',
-                onPress: () => navigation.goBack(),
-              },
-            ]
-          );
-        } else {
-          const errorMessage = data.error === 'scheduled_pill_not_found'
+        // Allow retry
+        const errorMessage =
+          data.error === 'scheduled_pill_not_found'
             ? data.message
             : `This is not the correct medication (${medicationName || 'unknown'}). Please try again with the scheduled pill.`;
-          
-          Alert.alert(
-            '✗ Wrong Medication',
-            errorMessage,
-            [
-              {
-                text: 'Retry',
-                onPress: () => setPhoto(null),
-              },
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => navigation.goBack(),
-              },
-            ]
-          );
-        }
+
+        Alert.alert('✗ Wrong Medication', errorMessage, [
+          {
+            text: 'Retry',
+            onPress: () => setPhoto(null),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => navigation.goBack(),
+          },
+        ]);
       }
-    } catch (error) {
-      Alert.alert('Network Error', 'Could not connect to server. Please try again.');
-    } finally {
-      setVerifying(false);
     }
-  };
+  } catch (error) {
+    console.error('[VERIFY] Error:', error);
+    Alert.alert('Network Error', 'Could not connect to server. Please try again.');
+  } finally {
+    setVerifying(false);
+  }
+};
+
 
   const handleManualVerify = async () => {
     if (!photo) return;
@@ -189,20 +219,42 @@ export default function VerifyPillScreen({ route, navigation, user }) {
 
       const data = await response.json();
 
-      if (response.ok && data.match && data.name) {
-        Alert.alert(
-          'Verification Result',
-          `Verified: ${data.name}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.goBack(),
-            },
-          ]
-        );
-      } else {
-        Alert.alert('Not Found', 'This medication is not registered in the system.');
-      }
+     if (response.ok && data.match && data.name) {
+  const detectedName = data.name?.trim().toLowerCase();
+  const expectedName = medicationName?.trim().toLowerCase();
+
+  if (expectedName && detectedName === expectedName) {
+    Alert.alert(
+      '✅ Correct Pill',
+      `Verified: ${data.name}\nYou can take your medication now.`,
+      [
+        {
+          text: 'OK',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
+  } else {
+    Alert.alert(
+      '⚠️ Wrong Pill',
+      `Expected: ${medicationName}\nDetected: ${data.name}\nPlease ensure you are verifying the correct medication.`,
+      [
+        {
+          text: 'Retry',
+          onPress: () => setPhoto(null),
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
+  }
+} else {
+  Alert.alert('Not Found', 'This medication could not be verified. Try again.');
+}
+
     } catch (error) {
       Alert.alert('Network Error', 'Could not connect to server');
     } finally {

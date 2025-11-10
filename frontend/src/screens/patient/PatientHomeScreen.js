@@ -136,29 +136,44 @@ export default function PatientHomeScreen({ user, setUser, navigation }) {
       </View>
 
       <View style={styles.todayScheduleContainer}>
-        <Text style={styles.sectionTitle}>Today's Schedule</Text>
-        {todaySchedules.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>
-              No medications scheduled for today
-            </Text>
-          </View>
-        ) : (
-          todaySchedules.map((schedule) => (
-            <View key={schedule.id} style={styles.scheduleCard}>
-              <View style={styles.scheduleIconContainer}>
-                <Text style={styles.scheduleIcon}>💊</Text>
-              </View>
-              <View style={styles.scheduleInfo}>
-                <Text style={styles.scheduleMedication}>{schedule.medicationName}</Text>
-                <Text style={styles.scheduleTimes}>
-                  {schedule.time || 'No time set'}
-                </Text>
-              </View>
-            </View>
-          ))
-        )}
-      </View>
+  <Text style={styles.sectionTitle}>Today's Schedule</Text>
+  {todaySchedules.length === 0 ? (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyStateText}>
+        No medications scheduled for today
+      </Text>
+    </View>
+  ) : (
+    todaySchedules.map((schedule) => (
+      <TouchableOpacity
+        key={schedule.id}
+        style={styles.scheduleCard}
+        onPress={() =>
+          navigation.navigate('VerifyPill', {
+            medicationName: schedule.medicationName,
+            manual: true,
+          })
+        }
+      >
+        <View style={styles.scheduleIconContainer}>
+          <Text style={styles.scheduleIcon}>💊</Text>
+        </View>
+        <View style={styles.scheduleInfo}>
+          <Text style={styles.scheduleMedication}>
+            {schedule.medicationName}
+          </Text>
+          <Text style={styles.scheduleTimes}>
+            {schedule.time || 'No time set'}
+          </Text>
+          <Text style={{ color: '#4A90E2', marginTop: 4, fontWeight: '600' }}>
+            Tap to Verify
+          </Text>
+        </View>
+      </TouchableOpacity>
+    ))
+  )}
+</View>
+
 
       <View style={styles.instructionsContainer}>
         <Text style={styles.sectionTitle}>How It Works</Text>

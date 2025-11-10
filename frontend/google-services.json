@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "87314510794",
-    "project_id": "pillsafe-63fc7",
-    "storage_bucket": "pillsafe-63fc7.firebasestorage.app"
+    "project_number": "182511896683",
+    "project_id": "mediguardian-v2",
+    "storage_bucket": "mediguardian-v2.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:87314510794:android:70c5a692c52692c6fa1533",
+        "mobilesdk_app_id": "1:182511896683:android:b508bbdfaae95b0d9d892e",
         "android_client_info": {
           "package_name": "com.mediguardian.app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyACmNqWUMTfqti3ZM4t2ttUeD4Oz_LsKNU"
+          "current_key": "AIzaSyBphkGUFOJ5ITeErsQmrzIw-E7AEO-EFR4"
         }
       ],
       "services": {
