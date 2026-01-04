@@ -27,7 +27,7 @@ const verificationLogSchema = new mongoose.Schema({
 
   result: {
     type: String,
-    enum: ['SUCCESS', 'FAILED'],
+    enum: ['SUCCESS', 'FAILURE'],
     required: true,
   },
 

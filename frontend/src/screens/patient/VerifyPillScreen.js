@@ -104,11 +104,18 @@ export default function VerifyPillScreen({ route, navigation, user }) {
       body: formData,
     });
 
+    
+
     const data = await response.json();
 
     if (response.ok && data.match && data.name) {
       // ✅ Correct pill
       await notifyCaregiver('verification_success', data.name);
+      await logVerificationResult({
+        result: 'SUCCESS',
+        detectedName: data.name,
+      });
+
 
       Alert.alert(
         '✓ Correct Medication!',
@@ -128,6 +135,11 @@ export default function VerifyPillScreen({ route, navigation, user }) {
       if (newRetryCount >= 3) {
         // 🚨 After 3 wrong attempts, notify all caregivers
         try {
+          await logVerificationResult({
+            result: 'FAILURE',
+            detectedName: data.name,
+          });
+
           console.log('[VERIFICATION] 3 failed attempts — notifying caregivers...');
           const notifyRes = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
             method: 'POST',
@@ -196,6 +208,27 @@ export default function VerifyPillScreen({ route, navigation, user }) {
   }
 };
 
+const logVerificationResult = async ({ result, detectedName }) => {
+  try {
+    await fetch(`${BACKEND_URL}/api/verification/log`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${user.token}`,
+      },
+      body: JSON.stringify({
+        scheduleId,
+        medicationName,
+        detectedName,
+        result, // "SUCCESS" | "FAILURE"
+      }),
+    });
+  } catch (err) {
+    console.warn('[LOGGING FAILED]', err);
+  }
+};
+
+
 
   const handleManualVerify = async () => {
     if (!photo) return;
@@ -224,6 +257,11 @@ export default function VerifyPillScreen({ route, navigation, user }) {
   const expectedName = medicationName?.trim().toLowerCase();
 
   if (expectedName && detectedName === expectedName) {
+    await logVerificationResult({
+    result: 'SUCCESS',
+    detectedName: data.name,
+  });
+
     Alert.alert(
       '✅ Correct Pill',
       `Verified: ${data.name}\nYou can take your medication now.`,
@@ -235,6 +273,11 @@ export default function VerifyPillScreen({ route, navigation, user }) {
       ]
     );
   } else {
+    await logVerificationResult({
+      result: 'FAILURE',
+      detectedName: data.name || null,
+    });
+
     Alert.alert(
       '⚠️ Wrong Pill',
       `Expected: ${medicationName}\nDetected: ${data.name}\nPlease ensure you are verifying the correct medication.`,

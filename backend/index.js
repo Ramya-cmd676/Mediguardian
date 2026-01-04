@@ -209,21 +209,21 @@ app.post('/verify-pill', verifyToken, upload.single('image'), async (req, res) =
       const scoreGap = best.score - secondBest;
       const isUnambiguous = scoreGap > 0.1; // At least 10% better than second match
       
-      const patient = await User.findOne({ userId });
+//       const patient = await User.findOne({ userId });
 
-if (patient?.assignedCaregiverId) {
-  await VerificationLog.create({
-    logId: uuidv4(),
-    patientId: userId,
-    caregiverId: patient.assignedCaregiverId,
-    medicationName: best.name,
-    scheduleId: scheduleId || null,
-    result: 'SUCCESS',
-    score: best.score,
-    confidence: confidenceLevel,
-    createdAt: new Date(),
-  });
-}
+// if (patient?.assignedCaregiverId) {
+//   await VerificationLog.create({
+//     logId: uuidv4(),
+//     patientId: userId,
+//     caregiverId: patient.assignedCaregiverId,
+//     medicationName: best.name,
+//     scheduleId: scheduleId || null,
+//     result: 'SUCCESS',
+//     score: best.score,
+//     confidence: confidenceLevel,
+//     createdAt: new Date(),
+//   });
+// }
 
     
   
@@ -390,6 +390,37 @@ app.get('/caregiver/patients', verifyToken, async (req, res) => {
     res.status(500).json({ error: 'server error' });
   }
 });
+
+app.post('/api/verification/log', verifyToken, async (req, res) => {
+  try {
+    const userId = req.userId;
+    console.log('[LOG VERIFICATION] User:', userId);
+    console.log('[LOG VERIFICATION] user.id:', req.user.id);
+    const { scheduleId, medicationName, detectedName, result } = req.body;
+
+    const patient = await User.findOne({ userId });
+    if (!patient?.assignedCaregiverId) {
+      return res.json({ success: true });
+    }
+
+    await VerificationLog.create({
+      logId: uuidv4(),
+      patientId: userId,
+      caregiverId: patient.assignedCaregiverId,
+      medicationName: medicationName || detectedName || 'Unknown',
+      detectedName,
+      scheduleId: scheduleId || null,
+      result, // "SUCCESS" or "FAILURE"
+      createdAt: new Date(),
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[LOG ERROR]', err);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
 
 
 
