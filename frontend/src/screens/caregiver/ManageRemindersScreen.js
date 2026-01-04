@@ -49,11 +49,11 @@ export default function ManageRemindersScreen({ user }) {
   const loadData = async () => {
     try {
       // --- Fetch all users and filter only patients ---
-      const usersRes = await fetch(`${BACKEND_URL}/auth/users`, {
+      const usersRes = await fetch(`${BACKEND_URL}/caregiver/patients`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      const allUsers = await usersRes.json();
-      const patientList = allUsers.filter((u) => u.role === 'patient');
+      const patientList = await usersRes.json();
+      
       setPatients(patientList);
 
       // Preselect first patient if not chosen yet

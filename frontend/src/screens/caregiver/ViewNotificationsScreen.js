@@ -30,16 +30,6 @@ export default function ViewNotificationsScreen({ user }) {
       const data = await res.json();
       setNotifications(data);
 
-      // Placeholder demo data for now
-      setNotifications([
-        {
-          id: '1',
-          type: 'success', // notification type: success, fallback, or missed
-          patientEmail: 'patient@example.com',
-          message: 'Patient successfully verified medication at 08:30 AM',
-          timestamp: new Date().toISOString(), // current time as example
-        },
-      ]);
     } catch (error) {
       console.error('Failed to load notifications:', error);
     }

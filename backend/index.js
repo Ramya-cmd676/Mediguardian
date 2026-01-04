@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const { User, PushToken } = require('./database');
 const { 
   ensureModelLoaded, 
   imageBufferToEmbedding, 
@@ -15,7 +16,7 @@ const {
   saveDatabase 
 } = require('./model');
 const { v4: uuidv4 } = require('uuid');
-const { connectDB, Pill } = require('./database');
+const { connectDB, Pill, VerificationLog } = require('./database');
 
 const UPLOAD_DIR = path.join(__dirname, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -108,7 +109,7 @@ app.post('/verify-pill', verifyToken, upload.single('image'), async (req, res) =
     console.log('[VERIFY] Starting pill verification...');
     const probe = await imageBufferToEmbedding(req.file.buffer);
 
-    const userId = req.userId; // From verifyToken middleware
+    const userId = req.user.id; // From verifyToken middleware
     const scheduleId = req.body.scheduleId || req.query.scheduleId; // Accept scheduleId
     
     let pillsQuery = {};
@@ -208,6 +209,24 @@ app.post('/verify-pill', verifyToken, upload.single('image'), async (req, res) =
       const scoreGap = best.score - secondBest;
       const isUnambiguous = scoreGap > 0.1; // At least 10% better than second match
       
+      const patient = await User.findOne({ userId });
+
+if (patient?.assignedCaregiverId) {
+  await VerificationLog.create({
+    logId: uuidv4(),
+    patientId: userId,
+    caregiverId: patient.assignedCaregiverId,
+    medicationName: best.name,
+    scheduleId: scheduleId || null,
+    result: 'SUCCESS',
+    score: best.score,
+    confidence: confidenceLevel,
+    createdAt: new Date(),
+  });
+}
+
+    
+  
       return res.json({ 
         match: true, 
         id: best.id, 
@@ -256,6 +275,46 @@ app.get('/pills', verifyToken, async (req, res) => {
   }
 });
 
+// routes or directly in app.js
+app.get('/api/notifications', verifyToken, async (req, res) => {
+  try {
+    const caregiverId = req.userId;
+
+    // 1. Fetch logs for this caregiver
+    const logs = await VerificationLog.find({ caregiverId })
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    // 2. Fetch patients once
+    const patientIds = [...new Set(logs.map(l => l.patientId))];
+    const patients = await User.find({ userId: { $in: patientIds } })
+      .select('userId email');
+
+    const patientMap = {};
+    patients.forEach(p => {
+      patientMap[p.userId] = p.email;
+    });
+
+    // 3. Convert logs → frontend format
+    const notifications = logs.map(log => ({
+      id: log._id.toString(),
+      type: log.result === 'SUCCESS' ? 'success' : 'fallback',
+      patientEmail: patientMap[log.patientId] || 'Unknown patient',
+      message:
+        log.result === 'SUCCESS'
+          ? `Patient verified ${log.medicationName}`
+          : `Patient failed to verify ${log.medicationName}`,
+      timestamp: log.createdAt
+    }));
+
+    res.json(notifications);
+  } catch (err) {
+    console.error('[GET NOTIFICATIONS]', err);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
+
 // Test endpoint to send a notification manually (for debugging)
 app.post('/test-notification', verifyToken, async (req, res) => {
   try {
@@ -288,6 +347,51 @@ app.get('/users', verifyToken, async (req, res) => {
     return res.status(500).json({ error: 'server error' });
   }
 });
+
+// Assign caregiver to patient
+app.put('/users/:patientId/assign-caregiver', verifyToken, async (req, res) => {
+  const { caregiverId } = req.body;
+  const { patientId } = req.params;
+
+  // Ensure caregiver exists
+  const caregiver = await User.findOne({ userId: caregiverId, role: 'caregiver' });
+  if (!caregiver) {
+    return res.status(404).json({ error: 'Caregiver not found' });
+  }
+
+  // Update patient
+  const patient = await User.findOneAndUpdate(
+    { userId: patientId, role: 'patient' },
+    { assignedCaregiverId: caregiverId },
+    { new: true }
+  );
+
+  if (!patient) {
+    return res.status(404).json({ error: 'Patient not found' });
+  }
+
+  res.json({ success: true, assignedCaregiverId: caregiverId });
+});
+
+// Get patients for caregiver
+app.get('/caregiver/patients', verifyToken, async (req, res) => {
+  try {
+    // Only caregivers allowed
+    const caregiverId = req.userId;
+
+    const patients = await User.find({
+      role: 'patient',
+      assignedCaregiverId: caregiverId
+    }).select('userId name email');
+
+    res.json(patients);
+  } catch (err) {
+    console.error('[GET CAREGIVER PATIENTS]', err);
+    res.status(500).json({ error: 'server error' });
+  }
+});
+
+
 
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => {

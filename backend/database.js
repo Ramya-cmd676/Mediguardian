@@ -8,9 +8,33 @@ const userSchema = new mongoose.Schema({
   name: String,
   email: { type: String, required: true, unique: true },
   role: { type: String, enum: ['patient', 'caregiver'], default: 'patient' },
+  assignedCaregiverId: { type: String, default: null },
   passwordHash: { type: String, required: true },
   createdAt: { type: Date, default: Date.now }
 });
+
+// Verification Log Schema
+const verificationLogSchema = new mongoose.Schema({
+  logId: { type: String, required: true, unique: true },
+
+  patientId: { type: String, required: true },
+  caregiverId: { type: String, required: true },
+
+  medicationName: String,
+  scheduleId: String,
+  score: Number,
+
+
+  result: {
+    type: String,
+    enum: ['SUCCESS', 'FAILED'],
+    required: true,
+  },
+
+  confidence: String, // HIGH / MEDIUM / LOW
+  createdAt: { type: Date, default: Date.now },
+});
+
 
 // Pill Schema
 const pillSchema = new mongoose.Schema({
@@ -54,6 +78,8 @@ const User = mongoose.model('User', userSchema);
 const Pill = mongoose.model('Pill', pillSchema);
 const Schedule = mongoose.model('Schedule', scheduleSchema);
 const PushToken = mongoose.model('PushToken', pushTokenSchema);
+const VerificationLog = mongoose.model('VerificationLog', verificationLogSchema);
+
 
 async function connectDB() {
   try {
@@ -76,5 +102,6 @@ module.exports = {
   User,
   Pill,
   Schedule,
-  PushToken
+  PushToken,
+  VerificationLog
 };

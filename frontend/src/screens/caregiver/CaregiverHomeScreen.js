@@ -20,32 +20,35 @@ export default function CaregiverHomeScreen({ user, setUser, navigation }) {
     loadDashboard();
   }, []);
 
-  const loadDashboard = async () => {
-    try {
-      // Load all users to find patients
-      const usersRes = await fetch(`${BACKEND_URL}/auth/users`, {
-        headers: { Authorization: `Bearer ${user.token}` },
-      });
-      const allUsers = await usersRes.json();
-      const patientList = allUsers.filter((u) => u.role === 'patient');
-      setPatients(patientList);
+ const loadDashboard = async () => {
+  try {
+    // Patients
+    const usersRes = await fetch(`${BACKEND_URL}/caregiver/patients`, {
+      headers: { Authorization: `Bearer ${user.token}` },
+    });
+    const patientRaw = await usersRes.json();
+    const patientList = Array.isArray(patientRaw) ? patientRaw : [];
+    setPatients(patientList);
 
-      // Load schedules
-      const schedulesRes = await fetch(`${BACKEND_URL}/api/schedules`, {
-        headers: { Authorization: `Bearer ${user.token}` },
-      });
-      const schedules = await schedulesRes.json();
-      const activeSchedules = schedules.filter((s) => s.active);
+    // Schedules
+    const schedulesRes = await fetch(`${BACKEND_URL}/api/schedules`, {
+      headers: { Authorization: `Bearer ${user.token}` },
+    });
+    const schedulesRaw = await schedulesRes.json();
+    const schedules = Array.isArray(schedulesRaw) ? schedulesRaw : [];
 
-      setStats({
-        totalPatients: patientList.length,
-        activeReminders: activeSchedules.length,
-        todayDoses: activeSchedules.reduce((sum, s) => sum + (s.times?.length || 0), 0),
-      });
-    } catch (error) {
-      console.error('Failed to load dashboard:', error);
-    }
-  };
+    const activeSchedules = schedules.filter(s => s?.active !== false);
+
+    setStats({
+      totalPatients: patientList.length,
+      activeReminders: activeSchedules.length,
+      todayDoses: activeSchedules.length, // 1 dose per schedule
+    });
+  } catch (err) {
+    console.error('Failed to load dashboard:', err);
+  }
+};
+
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -137,7 +140,7 @@ export default function CaregiverHomeScreen({ user, setUser, navigation }) {
             <Text style={styles.emptyStateText}>No patients registered yet</Text>
           </View>
         ) : (
-          patients.map((patient) => (
+           patients.map((patient) => (
             <View key={patient.id} style={styles.patientCard}>
               <View style={styles.patientInfo}>
                 <Text style={styles.patientIcon}>👤</Text>

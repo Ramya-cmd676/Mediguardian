@@ -34,7 +34,7 @@ export default function AddTabletScreen({ user }) {
 
   const loadPatients = async () => {
     try {
-      const response = await fetch(`${BACKEND_URL}/auth/users`, {
+      const response = await fetch(`${BACKEND_URL}/caregiver/patients`, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
       const allUsers = await response.json();
