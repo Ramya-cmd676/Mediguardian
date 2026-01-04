@@ -109,24 +109,103 @@ export default function VerifyPillScreen({ route, navigation, user }) {
     const data = await response.json();
 
     if (response.ok && data.match && data.name) {
+      const detectedName = data.name?.trim().toLowerCase();
+      const expectedName = medicationName?.trim().toLowerCase();
       // ✅ Correct pill
-      await notifyCaregiver('verification_success', data.name);
-      await logVerificationResult({
-        result: 'SUCCESS',
-        detectedName: data.name,
-      });
+      if (expectedName && detectedName === expectedName){
+          await notifyCaregiver('verification_success', data.name);
+          await logVerificationResult({
+            result: 'SUCCESS',
+            detectedName: data.name,
+          });
 
 
-      Alert.alert(
-        '✓ Correct Medication!',
-        `Verified: ${data.name}\n\nPlease take your medication now.`,
-        [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]
-      );
+          Alert.alert(
+            '✓ Correct Medication!',
+            `Verified: ${data.name}\n\nPlease take your medication now.`,
+            [
+              {
+                text: 'OK',
+                onPress: () => navigation.goBack(),
+              },
+            ]
+          );
+      }
+      else{
+        
+          // ❌ Wrong pill or no match
+          const newRetryCount = retryCount + 1;
+          setRetryCount(newRetryCount);
+
+          if (newRetryCount >= 3) {
+            // 🚨 After 3 wrong attempts, notify all caregivers
+            try {
+              await logVerificationResult({
+                result: 'FAILURE',
+                detectedName: data.name,
+              });
+
+              // console.log('[VERIFICATION] 3 failed attempts — notifying caregivers...');
+              // const notifyRes = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
+              //   method: 'POST',
+              //   headers: {
+              //     'Content-Type': 'application/json',
+              //     Authorization: `Bearer ${user.token}`,
+              //   },
+              //   body: JSON.stringify({
+              //     role: 'caregiver',
+              //     title: 'Medication Alert ⚠️',
+              //     body: `⚠️ Patient ${user.name || user.email} failed to verify ${medicationName || 'Unknown medication'} after 3 attempts`,
+              //     data: {
+              //       type: 'verification_failed',
+              //       patientId: user.id,
+              //       patientName: user.name || user.email,
+              //       medicationName: medicationName,
+              //       scheduleId,
+              //     },
+              //   }),
+              // });
+
+              // if (notifyRes.ok) {
+              //   console.log('[VERIFICATION] ✅ Caregivers notified after 3 failed attempts');
+              // } else {
+              //   console.warn('[VERIFICATION] ❌ Failed to notify caregivers:', await notifyRes.text());
+              // }
+            } catch (err) {
+              console.warn('[VERIFICATION] Error notifying caregivers:', err);
+            }
+
+            Alert.alert(
+              '✗ Verification Failed',
+              'Unable to verify after multiple attempts. Your caregiver has been notified.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.goBack(),
+                },
+              ]
+            );
+          } else {
+            // Allow retry
+            const errorMessage =
+              data.error === 'scheduled_pill_not_found'
+                ? data.message
+                : `This is not the correct medication (${medicationName || 'unknown'}). Please try again with the scheduled pill.`;
+
+            Alert.alert('✗ Wrong Medication', errorMessage, [
+              {
+                text: 'Retry',
+                onPress: () => setPhoto(null),
+              },
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => navigation.goBack(),
+              },
+            ]);
+          }
+      }
+      
     } else {
       // ❌ Wrong pill or no match
       const newRetryCount = retryCount + 1;
@@ -140,32 +219,32 @@ export default function VerifyPillScreen({ route, navigation, user }) {
             detectedName: data.name,
           });
 
-          console.log('[VERIFICATION] 3 failed attempts — notifying caregivers...');
-          const notifyRes = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${user.token}`,
-            },
-            body: JSON.stringify({
-              role: 'caregiver',
-              title: 'Medication Alert ⚠️',
-              body: `⚠️ Patient ${user.name || user.email} failed to verify ${medicationName || 'Unknown medication'} after 3 attempts`,
-              data: {
-                type: 'verification_failed',
-                patientId: user.id,
-                patientName: user.name || user.email,
-                medicationName: medicationName,
-                scheduleId,
-              },
-            }),
-          });
+          // console.log('[VERIFICATION] 3 failed attempts — notifying caregivers...');
+          // const notifyRes = await fetch(`${BACKEND_URL}/api/push/send-to-role`, {
+          //   method: 'POST',
+          //   headers: {
+          //     'Content-Type': 'application/json',
+          //     Authorization: `Bearer ${user.token}`,
+          //   },
+          //   body: JSON.stringify({
+          //     role: 'caregiver',
+          //     title: 'Medication Alert ⚠️',
+          //     body: `⚠️ Patient ${user.name || user.email} failed to verify ${medicationName || 'Unknown medication'} after 3 attempts`,
+          //     data: {
+          //       type: 'verification_failed',
+          //       patientId: user.id,
+          //       patientName: user.name || user.email,
+          //       medicationName: medicationName,
+          //       scheduleId,
+          //     },
+          //   }),
+          // });
 
-          if (notifyRes.ok) {
-            console.log('[VERIFICATION] ✅ Caregivers notified after 3 failed attempts');
-          } else {
-            console.warn('[VERIFICATION] ❌ Failed to notify caregivers:', await notifyRes.text());
-          }
+          // if (notifyRes.ok) {
+          //   console.log('[VERIFICATION] ✅ Caregivers notified after 3 failed attempts');
+          // } else {
+          //   console.warn('[VERIFICATION] ❌ Failed to notify caregivers:', await notifyRes.text());
+          // }
         } catch (err) {
           console.warn('[VERIFICATION] Error notifying caregivers:', err);
         }

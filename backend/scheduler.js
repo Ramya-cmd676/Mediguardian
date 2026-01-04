@@ -1,6 +1,11 @@
+const { VerificationLog } = require('./database');
+const { v4: uuidv4 } = require('uuid');
 const cron = require('node-cron');
 const { sendMedicationReminder } = require('./notifications');
 const { Schedule } = require('./database');
+const MISSED_GRACE_MINUTES = 2;
+
+
 
 /**
  * Initialize medication reminder scheduler
@@ -62,6 +67,17 @@ function initScheduler() {
     }
   });
 
+    // ⏰ Missed-dose checker (every 5 minutes)
+  // cron.schedule('*/2 * * * *', async () => {
+  //   try {
+  //     console.log('[SCHEDULER] Checking missed doses...');
+  //     await checkMissedDoses();
+  //   } catch (err) {
+  //     console.error('[MISSED DOSE ERROR]', err);
+  //   }
+  // });
+
+
   console.log('[SCHEDULER] Medication reminder scheduler started');
 }
 
@@ -80,8 +96,65 @@ async function sendTestReminder(userId, medicationName) {
   console.log('[SCHEDULER] Sending test reminder:', testSchedule);
   return await sendMedicationReminder(testSchedule);
 }
+//not calling
+async function checkMissedDoses() {
+  const now = new Date();
+
+  // IST time
+  const istOffset = 5.5 * 60;
+  const istTime = new Date(now.getTime() + istOffset * 60 * 1000);
+
+  const currentMinutes =
+    istTime.getUTCHours() * 60 + istTime.getUTCMinutes();
+
+  const schedules = await Schedule.find({ active: true });
+
+  for (const schedule of schedules) {
+    if (!schedule.time) continue;
+
+    const [hh, mm] = schedule.time.split(':').map(Number);
+    const scheduleMinutes = hh * 60 + mm;
+
+    // Has grace period passed?
+    if (currentMinutes < scheduleMinutes + MISSED_GRACE_MINUTES) {
+      continue;
+    }
+
+    // Already SUCCESS?
+    const success = await VerificationLog.findOne({
+      scheduleId: schedule.scheduleId,
+      result: 'SUCCESS'
+    });
+
+    if (success) continue;
+
+    // Already MISSED?
+    const missed = await VerificationLog.findOne({
+      scheduleId: schedule.scheduleId,
+      result: 'MISSED'
+    });
+
+    if (missed) continue;
+
+    // ✅ Log MISSED
+    await VerificationLog.create({
+      logId: uuidv4(),
+      patientId: schedule.userId,
+      caregiverId: schedule.caregiverId,
+      medicationName: schedule.medicationName,
+      scheduleId: schedule.scheduleId,
+      result: 'MISSED',
+      createdAt: new Date(),
+    });
+
+    console.log(`[MISSED DOSE] Logged for ${schedule.medicationName}`);
+  }
+}
+
+
 
 module.exports = {
   initScheduler,
-  sendTestReminder
+  sendTestReminder,
+  checkMissedDoses
 };

@@ -113,32 +113,18 @@ app.post('/verify-pill', verifyToken, upload.single('image'), async (req, res) =
     const scheduleId = req.body.scheduleId || req.query.scheduleId; // Accept scheduleId
     
     let pillsQuery = {};
-    let expectedPillId = null;
     let expectedPillName = null;
 
     // If scheduleId provided, verify against ONLY the scheduled pill
     if (scheduleId) {
-      console.log(`[VERIFY] Schedule-based verification for scheduleId: ${scheduleId}`);
-      
       const { Schedule } = require('./database');
       const schedule = await Schedule.findOne({ scheduleId });
-      
+
       if (schedule) {
-        expectedPillId = schedule.pillId;
         expectedPillName = schedule.medicationName;
-        
-        if (expectedPillId) {
-          // Match against ONLY this specific pill
-          pillsQuery.pillId = expectedPillId;
-          console.log(`[VERIFY] Verifying against scheduled pill: ${expectedPillName} (ID: ${expectedPillId})`);
-        } else if (expectedPillName) {
-          // Fallback: match by medication name (case-insensitive)
-          pillsQuery.name = new RegExp(`^${expectedPillName}$`, 'i');
-          console.log(`[VERIFY] Verifying against pill named: ${expectedPillName}`);
-        }
-      } else {
-        console.warn(`[VERIFY] Schedule ${scheduleId} not found, falling back to general verification`);
+        console.log(`[VERIFY] Expected scheduled pill: ${expectedPillName}`);
       }
+      
     } else {
       // Optional: filter by userId for general verification
       if (req.query.filterByUser === 'true' && userId) {
@@ -147,7 +133,7 @@ app.post('/verify-pill', verifyToken, upload.single('image'), async (req, res) =
       }
     }
 
-    const pillsToCheck = await Pill.find(pillsQuery);
+    const pillsToCheck = await Pill.find({});
     
     if (pillsToCheck.length === 0 && expectedPillName) {
       return res.status(404).json({ 
@@ -395,7 +381,7 @@ app.post('/api/verification/log', verifyToken, async (req, res) => {
   try {
     const userId = req.userId;
     console.log('[LOG VERIFICATION] User:', userId);
-    console.log('[LOG VERIFICATION] user.id:', req.user.id);
+    console.log('[LOG VERIFICATION] user.id:', req.body);
     const { scheduleId, medicationName, detectedName, result } = req.body;
 
     const patient = await User.findOne({ userId });
