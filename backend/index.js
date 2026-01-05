@@ -62,7 +62,8 @@ app.post('/register-pill', verifyToken, upload.single('image'), async (req, res)
     // Accept both 'name' and 'pill_name' for backwards compatibility
     const name = req.body.pill_name || req.body.name || 'unknown';
     const userId = req.body.user_id || req.userId; // user_id from request body or token
-    
+    const nativeName = req.body.native_name || null;
+
     await ensureModelLoaded();
 
     // Use enhanced multi-embedding extraction for better registration
@@ -77,6 +78,7 @@ app.post('/register-pill', verifyToken, upload.single('image'), async (req, res)
     const pill = new Pill({ 
       pillId, 
       name, 
+      nativeName,
       imagePath: `uploads/${filename}`, 
       embedding: embeddingResult.embedding,
       featureCount: embeddingResult.featureCount,
@@ -283,15 +285,28 @@ app.get('/api/notifications', verifyToken, async (req, res) => {
 
     // 3. Convert logs → frontend format
     const notifications = logs.map(log => ({
-      id: log._id.toString(),
-      type: log.result === 'SUCCESS' ? 'success' : 'fallback',
-      patientEmail: patientMap[log.patientId] || 'Unknown patient',
-      message:
-        log.result === 'SUCCESS'
-          ? `Patient verified ${log.medicationName}`
-          : `Patient failed to verify ${log.medicationName}`,
-      timestamp: log.createdAt
-    }));
+  id: log._id.toString(),
+
+  // ✅ Correct classification
+  type:
+    log.result === 'SUCCESS'
+      ? 'success'
+      : log.result === 'MISSED'
+      ? 'missed'
+      : 'fallback',
+
+  patientEmail: log.result === 'MISSED'? log.patientId : patientMap[log.patientId] || 'Unknown patient',
+
+  // ✅ Correct message
+  message:
+    log.result === 'SUCCESS'
+      ? `Patient verified ${log.medicationName}`
+      : log.result === 'MISSED'
+      ? `Patient missed dose of ${log.medicationName}`
+      : `Patient failed to verify ${log.medicationName}`,
+
+  timestamp: log.createdAt,
+}));
 
     res.json(notifications);
   } catch (err) {

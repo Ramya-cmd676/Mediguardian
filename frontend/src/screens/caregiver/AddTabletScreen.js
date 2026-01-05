@@ -23,6 +23,7 @@ export default function AddTabletScreen({ user }) {
   const [patients, setPatients] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [nativeName, setNativeName] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -38,10 +39,10 @@ export default function AddTabletScreen({ user }) {
         headers: { Authorization: `Bearer ${user.token}` },
       });
       const allUsers = await response.json();
-      const patientList = allUsers.filter((u) => u.role === 'patient');
+      const patientList = Array.isArray(allUsers) ? allUsers : [];
       setPatients(patientList);
       if (patientList.length > 0) {
-        setSelectedPatientId(patientList[0].id);
+        setSelectedPatientId(patientList[0].userId);
       }
     } catch (error) {
       console.error('Failed to load patients:', error);
@@ -79,7 +80,9 @@ export default function AddTabletScreen({ user }) {
       });
       formData.append('pill_name', pillName);
       formData.append('user_id', selectedPatientId);
-
+      if (nativeName.trim()) {
+        formData.append('native_name', nativeName.trim());
+      }
       const response = await fetch(`${BACKEND_URL}/register-pill`, {
         method: 'POST',
         headers: {
@@ -144,6 +147,16 @@ export default function AddTabletScreen({ user }) {
             onChangeText={setPillName}
           />
 
+          <Text style={styles.label}>
+            Medication Name (Native Language) <Text style={{ color: '#999' }}>(optional)</Text>
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={nativeName}
+            onChangeText={setNativeName}
+          />
+
+
           <Text style={styles.label}>Assign to Patient</Text>
           <View style={styles.pickerContainer}>
             <Picker
@@ -153,9 +166,9 @@ export default function AddTabletScreen({ user }) {
             >
               {patients.map((patient) => (
                 <Picker.Item
-                  key={patient.id}
-                  label={`${patient.email} (ID: ${patient.id})`}
-                  value={patient.id}
+                  key={patient._id}
+                  label={`${patient.email} (ID: ${patient.userId})`}
+                  value={patient.userId}
                 />
               ))}
             </Picker>

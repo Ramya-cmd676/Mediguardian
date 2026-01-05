@@ -41,6 +41,7 @@ const pillSchema = new mongoose.Schema({
   pillId: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   imagePath: String,
+  nativeName: String,
   embedding: [Number],
   featureCount: Number,
   registrationConfidence: Number,

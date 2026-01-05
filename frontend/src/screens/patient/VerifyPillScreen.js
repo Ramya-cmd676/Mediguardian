@@ -22,6 +22,7 @@ export default function VerifyPillScreen({ route, navigation, user }) {
   const scheduleId = route.params?.scheduleId;
   const medicationName = route.params?.medicationName;
   const isManual = route.params?.manual;
+  
 
   useEffect(() => {
     (async () => {

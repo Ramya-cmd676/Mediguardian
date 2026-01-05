@@ -27,8 +27,11 @@ export default function PatientHomeScreen({ user, setUser, navigation }) {
       });
       const allSchedules = await response.json();
       const mySchedules = allSchedules.filter(
-        (s) => s.patientId === user.id && s.active
-      );
+  (s) =>
+    (s.patientId === user.id || s.userId === user.id) &&
+    s.active
+);
+
       setSchedules(mySchedules);
     } catch (error) {
       console.error('Failed to load schedules:', error);

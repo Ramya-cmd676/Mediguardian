@@ -2,7 +2,7 @@ const { VerificationLog } = require('./database');
 const { v4: uuidv4 } = require('uuid');
 const cron = require('node-cron');
 const { sendMedicationReminder } = require('./notifications');
-const { Schedule } = require('./database');
+const { Schedule , User} = require('./database');
 const MISSED_GRACE_MINUTES = 2;
 
 
@@ -68,14 +68,14 @@ function initScheduler() {
   });
 
     // ⏰ Missed-dose checker (every 5 minutes)
-  // cron.schedule('*/2 * * * *', async () => {
-  //   try {
-  //     console.log('[SCHEDULER] Checking missed doses...');
-  //     await checkMissedDoses();
-  //   } catch (err) {
-  //     console.error('[MISSED DOSE ERROR]', err);
-  //   }
-  // });
+  cron.schedule('*/2 * * * *', async () => {
+    try {
+      console.log('[SCHEDULER] Checking missed doses...');
+      await checkMissedDoses();
+    } catch (err) {
+      console.error('[MISSED DOSE ERROR]', err);
+    }
+  });
 
 
   console.log('[SCHEDULER] Medication reminder scheduler started');
@@ -135,12 +135,14 @@ async function checkMissedDoses() {
     });
 
     if (missed) continue;
-
+    console.log("[MISSED DOSE] Schedule ",schedule);
+    const patient = await User.findOne({ userId: schedule.userId });
+    console.log("Patient ",patient);
     // ✅ Log MISSED
     await VerificationLog.create({
       logId: uuidv4(),
       patientId: schedule.userId,
-      caregiverId: schedule.caregiverId,
+      caregiverId: patient?.userId,
       medicationName: schedule.medicationName,
       scheduleId: schedule.scheduleId,
       result: 'MISSED',

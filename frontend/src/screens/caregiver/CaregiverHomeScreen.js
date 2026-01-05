@@ -29,6 +29,7 @@ export default function CaregiverHomeScreen({ user, setUser, navigation }) {
     const patientRaw = await usersRes.json();
     const patientList = Array.isArray(patientRaw) ? patientRaw : [];
     setPatients(patientList);
+    console.log('Loaded patients:', patientList);
 
     // Schedules
     const schedulesRes = await fetch(`${BACKEND_URL}/api/schedules`, {
@@ -141,12 +142,12 @@ export default function CaregiverHomeScreen({ user, setUser, navigation }) {
           </View>
         ) : (
            patients.map((patient) => (
-            <View key={patient.id} style={styles.patientCard}>
+            <View key={patient._id} style={styles.patientCard}>
               <View style={styles.patientInfo}>
                 <Text style={styles.patientIcon}>👤</Text>
                 <View>
                   <Text style={styles.patientEmail}>{patient.email}</Text>
-                  <Text style={styles.patientId}>ID: {patient.id}</Text>
+                  <Text style={styles.patientId}>ID: {patient.userId}</Text>
                 </View>
               </View>
             </View>
